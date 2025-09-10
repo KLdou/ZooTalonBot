@@ -1,0 +1,23 @@
+{
+  "name": "zoo-talons-bot",
+  "version": "1.0.0",
+  "main": "src/bot/index.js",
+  "scripts": {
+    "start": "node src/bot/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.8",
+    "axios": "^1.8.4",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.5.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "ollama": "^0.5.14",
+    "openai": "^5.20.0",
+    "pizzip": "^3.1.8",
+    "xmldom": "^0.6.0"
+  }
+}
