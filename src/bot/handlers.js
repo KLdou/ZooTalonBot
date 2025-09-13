@@ -129,7 +129,7 @@ ${JSON.stringify(msg.chat)}`);
     if (errors.length > 0) {
       await bot.sendMessage(
         chatId,
-        `Ошибки при обработке: ${errors.map((e) => e.name).join(", ")}`
+        `Ошибки при обработке: ${errors.map((e) => `${e.name} - ${e.error}`).join(", ")}`
       );
     }
   } catch (err) {
