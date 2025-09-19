@@ -1,5 +1,5 @@
 
-const { log } = require("../utils/helpers");
+const { log, logError } = require("../utils/helpers");
 const { Ollama } = require("ollama");
 const ollama = new Ollama();
 const ollamaModel = process.env.OLLAMA_MODEL;
@@ -18,7 +18,7 @@ async function sendPrompt(prompt) {
     });
     return message.content;
   } catch (error) {
-    log(`Ollama error: ${error.stack || error}`);
+    logError(`Ollama error`, error);
     throw error;
   }
 }

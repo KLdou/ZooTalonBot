@@ -2,11 +2,11 @@ const path = require("path");
 const fs = require("fs");
 const PizZip = require("pizzip");
 const { DOMParser } = require("@xmldom/xmldom");
-const { log } = require("./helpers");
+const { log, logError } = require("./helpers");
 
 function removeFileAfterSend(filePath) {
   fs.unlink(filePath, (err) => {
-    if (err) log(`Ошибка удаления файла ${filePath}: ${err.message}`);
+    if (err) logError(`Ошибка удаления файла ${filePath}`, err);
     else log(`Удалён временный файл: ${filePath}`);
   });
 }
@@ -46,7 +46,7 @@ async function openAndReplacePlaceholders(inputFilename, outputFilename, data) {
     log(`Документ успешно создан: ${outputFilename}`);
     return newDocxBuffer;
   } catch (err) {
-    log(`Ошибка при генерации DOCX: ${err.message}`);
+    logError(`Ошибка при генерации DOCX`, err);
   }
 }
 

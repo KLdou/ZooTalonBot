@@ -1,4 +1,4 @@
-const { log } = require("../utils/helpers");
+const { log, logError } = require("../utils/helpers");
 const { OpenAI } = require("openai");
 
 const openai = new OpenAI({
@@ -50,7 +50,7 @@ async function sendPrompt(prompt, model = process.env.OPEN_ROUTER_MODEL) {
     requestTimestamps.push(Date.now());
     return response.choices[0].message.content;
   } catch (error) {
-    log(`OpenRouter error: ${error.stack || error}`);
+    logError(`OpenRouter error`, error);
     await sleep(REQUEST_WINDOW_MS);
     if (model === process.env.OPEN_ROUTER_MODEL) {
       return await sendPrompt(prompt, process.env.OPEN_ROUTER_MODEL_RESERVE);

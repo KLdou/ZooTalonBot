@@ -1,5 +1,6 @@
 const {
   log,
+  logError,
   confirmationKeyboard,
   storePayload,
   existsPayload,
@@ -48,7 +49,7 @@ async function handleCallback(bot, query) {
         key
       )}`;
       bot.sendMessage(chatId, errorMessage);
-      log(`Ошибка при обработке запроса от ${chatId}: ${errorMessage}`);
+      logError(`Ошибка при обработке запроса от ${chatId}`, new Error(errorMessage));
       return;
     }
 
@@ -87,7 +88,7 @@ async function handleCallback(bot, query) {
   } catch (err) {
     const errorMessage = `Ошибка при подтверждении: ${err.message}`;
     bot.sendMessage(chatId, errorMessage);
-    log(`Ошибка при обработке запроса от ${chatId}: ${errorMessage}`);
+    logError(`Ошибка при обработке запроса от ${chatId}`, err);
   }
 }
 
@@ -112,10 +113,12 @@ ${JSON.stringify(msg.chat)}`);
 
     const token = await fetchToken();
 
-    // Запускаем все обработки параллельно
-    const results = await Promise.all(
-      names.map((name) => processName(name, bot, chatId, baseData, token))
-    );
+    // Обрабатываем каждое имя последовательно для снижения нагрузки на сервер
+    const results = [];
+    for (const name of names) {
+      const result = await processName(name, bot, chatId, baseData, token);
+      results.push(result);
+    }
 
     // Анализируем результаты
     const confirmationNeeded = results.find(
@@ -133,7 +136,7 @@ ${JSON.stringify(msg.chat)}`);
       );
     }
   } catch (err) {
-    log(`Ошибка обработки запроса от ${chatId}: ${err.message}`);
+    logError(`Ошибка обработки запроса от ${chatId}`, err);
     bot.sendMessage(chatId, `Ошибка обработки запроса: ${err.message}`);
   }
 }
@@ -188,7 +191,7 @@ async function processName(name, bot, chatId, baseData, token) {
     await createTalonFlow(bot, chatId, baseData, docInfo, token, name);
     return { status: "talon_created", name };
   } catch (error) {
-    console.error(`Error processing ${name}:`, error);
+    logError(`Error processing ${name}`, error);
     return { status: "error", name, error };
   }
 }
@@ -201,17 +204,13 @@ async function createTalonFlow(
   token,
   name
 ) {
-  const [types, clinics, goals] = await Promise.all([
-    getRefList("/coupon-secured/v1/type", token),
-    getRefList("/coupon-secured/v1/vet", token),
-    getRefList("/coupon-secured/v1/goal?type=", token),
-  ]);
+  const types = await getRefList("/coupon-secured/v1/type", token);
+  const clinics = await getRefList("/coupon-secured/v1/vet", token);
+  const goals = await getRefList("/coupon-secured/v1/goal?type=", token);
 
-  const [matchedType, matchedClinic, matchedGoal] = await Promise.all([
-    matchEntity("source", types, "call center"),
-    matchEntity("clinic", clinics, baseData.clinic),
-    matchEntity("type", goals, baseData.type),
-  ]);
+  const matchedType = await matchEntity("source", types, "call center");
+  const matchedClinic = await matchEntity("clinic", clinics, baseData.clinic);
+  const matchedGoal = await matchEntity("type", goals, baseData.type);
 
   const talonPayload = {
     type: matchedType.id,
@@ -254,13 +253,11 @@ async function createTalonFlow(
 async function CreateDocumentFile(baseData, bot, chatId) {
   const today = new Date();
 
-  const [address, goal, pet, month, shortFio] = await Promise.all([
-    formatAddress(baseData.address),
-    formatGoal(baseData.type),
-    formatPet(baseData.animal_type, baseData.animal_name),
-    formatMonth(today),
-    formatShortFio(baseData.fio),
-  ]);
+  const address = await formatAddress(baseData.address);
+  const goal = await formatGoal(baseData.type);
+  const pet = await formatPet(baseData.animal_type, baseData.animal_name);
+  const month = await formatMonth(today);
+  const shortFio = await formatShortFio(baseData.fio);
 
   docxPayload = {
     fio: baseData.fio,
@@ -312,7 +309,7 @@ async function CreateDocumentFile(baseData, bot, chatId) {
         }
       )
       .then(() => console.log("Файл успешно отправлен!"))
-      .catch((err) => log("Ошибка отправки:", err));
+      .catch((err) => logError("Ошибка отправки", err));
   }
 
   return newFile;

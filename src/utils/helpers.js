@@ -14,6 +14,21 @@ function log(message) {
   console.log(entry.trim());
 }
 
+function logError(message, error) {
+  const timestamp = new Date().toISOString();
+  const stack = new Error().stack;
+  const callerLine = stack.split('\n')[2]?.trim() || 'unknown location';
+  
+  let errorDetails = '';
+  if (error) {
+    errorDetails = error.stack || error.message || error.toString();
+  }
+  
+  const entry = `[${timestamp}] ERROR: ${message}\nLocation: ${callerLine}\nDetails: ${errorDetails}\n`;
+  logStream.write(entry);
+  console.log(entry.trim());
+}
+
 function confirmationKeyboard(key) {
   const buttons = [
     { text: "✅ Подтвердить", callback_data: JSON.stringify(key) },
@@ -78,6 +93,7 @@ function normalizePhoneNumber(phone) {
 
 module.exports = {
   log,
+  logError,
   confirmationKeyboard,
   storePayload,
   getPayload,

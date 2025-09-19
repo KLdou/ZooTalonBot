@@ -1,7 +1,11 @@
 // Универсальный сервис для работы с LLM-провайдерами (ollama, openrouter)
 // Выбор провайдера через process.env.LLM_PROVIDER ("ollama" или "openrouter")
 
+const { logError } = require('../utils/helpers');
 const provider = process.env.LLM_PROVIDER || 'ollama';
+
+// Константа для количества попыток при неудачном парсинге JSON
+const MAX_RETRY_ATTEMPTS = 2;
 
 let llm;
 if (provider === 'openrouter') {
@@ -10,7 +14,7 @@ if (provider === 'openrouter') {
   llm = require('./ollama');
 }
 
-async function parseUserMessage(text) {
+async function parseUserMessage(text, retryCount = 0) {
   const prompt = `You are the registrar of an organization dedicated to helping homeless animals.\n
 You will get text data where each line should be mapped to property of json object. 
 Order of lines in message can be different. Be sure that every property is filled.\n
@@ -18,11 +22,18 @@ Return only json without any explanations.\n
 You need to find out\n 
 1.Surname, First Name, Patronymic (should be saved as one string as fio property in json)\n2.Address (should be address property in json)\n3.Phone (should be phone property in json)\n4.Name of Veterinary Clinic (should be clinic property in json)\n5.Date of visit (should be date property in json)\n6.Type of animal, e.g. Cat or dog (should be animal_type property in json)\n7.Name of animal (should be animal_name property in json)\n8.Type of treatment: Sterilization, treatment (should be type property in json)\nCheck message below \n"""${text}""".\n`;
   const response = await llm.sendPrompt(prompt);
-  const jsonObject = JSON.parse(response.match(/\{.*\}/s)[0]);
+  const match = response.match(/\{.*\}/s);
+  if (!match) {
+    if (retryCount < MAX_RETRY_ATTEMPTS) {
+      return await parseUserMessage(text, retryCount + 1);
+    }
+    throw new Error(`LLM response does not contain valid JSON after ${MAX_RETRY_ATTEMPTS} attempts: ${response}`);
+  }
+  const jsonObject = JSON.parse(match[0]);
   return await reFillEmptyProperties(text, jsonObject);
 }
 
-async function reFillEmptyProperties(text, jsonObject) {
+async function reFillEmptyProperties(text, jsonObject, retryCount = 0) {
   const emptyProperties = findEmptyOrNullKeys(jsonObject);
   if (emptyProperties.length === 0) return jsonObject;
   const lines = findExtraLines(text, jsonObject);
@@ -65,7 +76,14 @@ async function reFillEmptyProperties(text, jsonObject) {
 
 Верни ТОЛЬКО JSON-объект без пояснений.`;
   const response = await llm.sendPrompt(prompt);
-  const result = JSON.parse(response.match(/\{.*\}/s)[0]);
+  const match = response.match(/\{.*\}/s);
+  if (!match) {
+    if (retryCount < MAX_RETRY_ATTEMPTS) {
+      return await reFillEmptyProperties(text, jsonObject, retryCount + 1);
+    }
+    throw new Error(`LLM response does not contain valid JSON for reFillEmptyProperties after ${MAX_RETRY_ATTEMPTS} attempts: ${response}`);
+  }
+  const result = JSON.parse(match[0]);
   return mergeWithOverrideEmpty(jsonObject, result);
 }
 
@@ -102,11 +120,18 @@ function mergeWithOverrideEmpty(mainObj, overrideObj) {
   return result;
 }
 
-async function findDocument(documents, fio, name) {
+async function findDocument(documents, fio, name, retryCount = 0) {
   const prompt = `Список: ${JSON.stringify(documents)}. Есть ли документ на животное ${name} от ${fio} в этом году? Верни JSON вида { exist: true, documentId: '', name: '' }`;
   const response = await llm.sendPrompt(prompt);
   try {
-    return JSON.parse(response.match(/\{.*\}/s)[0]);
+    const match = response.match(/\{.*\}/s);
+    if (!match) {
+      if (retryCount < MAX_RETRY_ATTEMPTS) {
+        return await findDocument(documents, fio, name, retryCount + 1);
+      }
+      return { exist: false };
+    }
+    return JSON.parse(match[0]);
   } catch {
     return { exist: false };
   }
@@ -141,7 +166,7 @@ function stringsMatch80Percent(str1, str2) {
   return similarity >= 0.8;
 }
 
-async function matchEntity(entityType, list, query) {
+async function matchEntity(entityType, list, query, retryCount = 0) {
   const foundItem = list.find(
     (item) => item.name && query && item.name.toLowerCase() === query.toLowerCase()
   );
@@ -154,7 +179,14 @@ async function matchEntity(entityType, list, query) {
   const prompt = `Найди соответствующий объект для "${query}" скорее всего это поле name в списке объектов типа ${entityType}:\n   ${JSON.stringify(list)}\n Обязательно верни JSON с name вида { name: '' }. Верни только JSON без пояснений.`;
   const response = await llm.sendPrompt(prompt);
   try {
-    const ollamaResponse = JSON.parse(response.match(/\{.*\}/s)[0]);
+    const match = response.match(/\{.*\}/s);
+    if (!match) {
+      if (retryCount < MAX_RETRY_ATTEMPTS) {
+        return await matchEntity(entityType, list, query, retryCount + 1);
+      }
+      return { id: "", name: "" };
+    }
+    const ollamaResponse = JSON.parse(match[0]);
     const foundItem = list.find(
       (item) =>
         item.name &&
@@ -168,7 +200,8 @@ async function matchEntity(entityType, list, query) {
       };
     }
     return { id: "", name: "" };
-  } catch {
+  } catch (e) {
+    logError(`Error in findObjectInArray for query "${query}"`, e);
     return { id: "", name: "" };
   }
 }

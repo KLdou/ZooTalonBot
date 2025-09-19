@@ -1,6 +1,6 @@
 require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
-const { log } = require("../utils/helpers");
+const { log, logError } = require("../utils/helpers");
 const { handleMessage, handleCallback } = require("./handlers");
 let bot;
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
@@ -10,7 +10,7 @@ function createBot() {
     try {
       bot.stopPolling();
     } catch (e) {
-      log('Error while stopping previous bot:', e);
+      logError('Error while stopping previous bot', e);
     }
   }
 
@@ -30,7 +30,7 @@ function createBot() {
 
   // Обработка ошибок polling
   bot.on("polling_error", (error) => {
-    log('Polling error:', error.code, error.message);
+    logError('Polling error', error);
     
     // Перезапускаем бота при фатальных ошибках
     if (error.code === 'EFATAL' || error.message.includes('ECONNRESET')) {
@@ -40,7 +40,7 @@ function createBot() {
   });
 
   bot.on("webhook_error", (error) => {
-    log('Webhook error:', error);
+    logError('Webhook error', error);
   });
 
   log('Bot started successfully');
