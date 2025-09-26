@@ -46,8 +46,21 @@ async function sendPrompt(prompt, model = process.env.OPEN_ROUTER_MODEL) {
           content: prompt,
         },
       ],
+      temperature: 0.2,
+      top_p: 0.1,
     });
+    
+    // Логируем весь response для отладки
+    log(`OpenRouter response:`, JSON.stringify(response, null, 2));
+    
     requestTimestamps.push(Date.now());
+    
+    // Проверяем структуру ответа
+    if (!response.choices || !response.choices[0] || !response.choices[0].message) {
+      logError('OpenRouter: Invalid response structure', response);
+      throw new Error('Invalid response structure from OpenRouter');
+    }
+    
     return response.choices[0].message.content;
   } catch (error) {
     logError(`OpenRouter error`, error);
