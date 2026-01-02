@@ -12,6 +12,7 @@ const {
 const {
   fetchToken,
   getDocuments,
+  getDocumentsWithSearch,
   getRefList,
   createCoupon,
   createDocument,
@@ -49,7 +50,10 @@ async function handleCallback(bot, query) {
         key
       )}`;
       bot.sendMessage(chatId, errorMessage);
-      logError(`Ошибка при обработке запроса от ${chatId}`, new Error(errorMessage));
+      logError(
+        `Ошибка при обработке запроса от ${chatId}`,
+        new Error(errorMessage)
+      );
       return;
     }
 
@@ -132,7 +136,9 @@ ${JSON.stringify(msg.chat)}`);
     if (errors.length > 0) {
       await bot.sendMessage(
         chatId,
-        `Ошибки при обработке: ${errors.map((e) => `${e.name} - ${e.error}`).join(", ")}`
+        `Ошибки при обработке: ${errors
+          .map((e) => `${e.name} - ${e.error}`)
+          .join(", ")}`
       );
     }
   } catch (err) {
@@ -143,10 +149,10 @@ ${JSON.stringify(msg.chat)}`);
 
 async function processName(name, bot, chatId, baseData, token) {
   try {
-    const docs = await getDocuments(name, token);
+    const docs = await getDocumentsWithSearch(name, token);
     const docInfo = await findDocument(docs, baseData.fio, name);
 
-    if (!docInfo.exist) {
+    if (!docInfo || !docInfo.exist) {
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
 

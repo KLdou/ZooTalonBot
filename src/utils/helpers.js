@@ -44,7 +44,7 @@ function storePayload(chatId, payload) {
     .randomBytes(4)
     .toString("hex")}`;
   payloadStore.set(key, payload);
-  setTimeout(() => payloadStore.delete(key), 20 * 60 * 1000);
+  setTimeout(() => payloadStore.delete(key), 60 * 60 * 1000);
   return key;
 }
 

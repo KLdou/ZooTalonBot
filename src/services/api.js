@@ -22,6 +22,20 @@ async function getDocuments(animalName, token) {
   });
   return res.data.items.map((i) => ({
     name: i.name,
+    date: i.effectiveDate,
+    documentId: i._id,
+  }));
+}
+
+async function getDocumentsWithSearch(animalName, token) {
+  const res = await axios.get(`${API_BASE}/document-secured/v1/search`, {
+    params: {
+      text: animalName,
+    },
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data.map((i) => ({
+    name: i.name,
     date: i.date,
     documentId: i._id,
   }));
@@ -54,6 +68,7 @@ async function createDocument(payload, token) {
 module.exports = {
   fetchToken,
   getDocuments,
+  getDocumentsWithSearch,
   getRefList,
   createCoupon,
   createDocument,
