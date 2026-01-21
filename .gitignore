@@ -1,3 +1,5 @@
 .env
 documents/
 node_modules/
+logger/
+*.log

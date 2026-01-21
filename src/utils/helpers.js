@@ -2,10 +2,21 @@ const fs = require("fs");
 const crypto = require("crypto");
 const path = require("path");
 
-const logStream = fs.createWriteStream(
-  path.resolve(__dirname, "../../logger/zoo-bot.log"),
-  { flags: "a" }
-);
+const logFilePath = path.resolve(__dirname, "../../logger/zoo-bot.log");
+const logDir = path.dirname(logFilePath);
+let logStream;
+try {
+  // Убедимся, что директория для логов существует
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+  logStream = fs.createWriteStream(logFilePath, { flags: "a" });
+} catch (e) {
+  // Если не удалось создать поток в файл (например, из-за прав),
+  // используем резервный объект, который пишет в stdout.
+  console.warn(`Logger: cannot write to ${logFilePath}, falling back to console.`, e);
+  logStream = { write: (msg) => process.stdout.write(msg) };
+}
 
 function log(message) {
   const timestamp = new Date().toISOString();
