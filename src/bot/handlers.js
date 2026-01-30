@@ -8,12 +8,18 @@ const {
   removePayload,
   normalizePhoneNumber,
   formatPhoneNumber,
+  storeEditSession,
+  getEditSession,
+  getActiveEditSession,
+  updateEditSession,
+  removeEditSession,
 } = require("../utils/helpers");
 const {
   fetchToken,
   getDocuments,
   getDocumentsWithSearch,
   getRefList,
+  getRefListCached,
   createCoupon,
   createDocument,
 } = require("../services/api");
@@ -28,6 +34,7 @@ const {
   formatMonth,
   formatShortFio,
 } = require("../services/llmService");
+const { validateAllFields } = require("../utils/validators");
 const { openAndReplacePlaceholders } = require("../utils/docxGenerator");
 const path = require("path");
 
@@ -42,6 +49,12 @@ async function handleCallback(bot, query) {
     if (typeof key === "object" && key.reject) {
       bot.sendMessage(chatId, "❌ Запрос отменён.");
       log(`Отклонён запрос от ${chatId}`);
+      return;
+    }
+
+    // НОВОЕ: Обработка запроса на редактирование поля
+    if (key.action === "edit_field") {
+      await startFieldEdit(bot, chatId, key.session, key.field);
       return;
     }
 
@@ -102,17 +115,44 @@ async function handleMessage(bot, msg) {
     bot.sendMessage(chatId, "Вам не разрешено использование данного бота.");
     console.log(`Данный пользователь хотел воспользоваться ботом
 ${JSON.stringify(msg.chat)}`);
+    return;
   }
 
   log(`📩 Получено сообщение от ${chatId}: ${msg.text}`);
 
   try {
+    // Проверяем, не находимся ли мы в режиме редактирования
+    const editSession = getActiveEditSession(chatId);
+    if (editSession && editSession.editingField) {
+      // Пользователь отправил новое значение для редактируемого поля
+      await handleFieldEdit(bot, chatId, editSession, msg.text);
+      return;
+    }
+
     const baseData = await parseUserMessage(msg.text);
     const names = Array.isArray(baseData.animal_name)
       ? baseData.animal_name
       : [baseData.animal_name];
     if (baseData.phone) {
       baseData.phone = normalizePhoneNumber(baseData.phone);
+    }
+
+    // Валидация всех полей
+    const validationErrors = validateAllFields(baseData);
+
+    if (Object.keys(validationErrors).length > 0) {
+      // Найдены ошибки - загружаем справочники и показываем интерфейс редактирования
+      const token = await fetchToken();
+      
+      // Загружаем справочники с кешированием
+      const types = await getRefListCached("/coupon-secured/v1/type", token, "types");
+      const clinics = await getRefListCached("/coupon-secured/v1/vet", token, "clinics");
+      const goals = await getRefListCached("/coupon-secured/v1/goal?type=", token, "goals");
+      
+      const refLists = { types, clinics, goals };
+      
+      await showDataEditInterface(bot, chatId, baseData, validationErrors, refLists);
+      return;
     }
 
     const token = await fetchToken();
@@ -210,9 +250,9 @@ async function createTalonFlow(
   token,
   name
 ) {
-  const types = await getRefList("/coupon-secured/v1/type", token);
-  const clinics = await getRefList("/coupon-secured/v1/vet", token);
-  const goals = await getRefList("/coupon-secured/v1/goal?type=", token);
+  const types = await getRefListCached("/coupon-secured/v1/type", token, "types");
+  const clinics = await getRefListCached("/coupon-secured/v1/vet", token, "clinics");
+  const goals = await getRefListCached("/coupon-secured/v1/goal?type=", token, "goals");
 
   const matchedType = await matchEntity("source", types, "call center");
   const matchedClinic = await matchEntity("clinic", clinics, baseData.clinic);
@@ -319,6 +359,260 @@ async function CreateDocumentFile(baseData, bot, chatId) {
   }
 
   return newFile;
+}
+
+/**
+ * Валидация специальных полей (clinic, type) через закешированные справочники
+ * @param {Object} session - Сессия редактирования
+ * @param {string} field - Имя поля
+ * @param {string} newValue - Новое значение
+ * @returns {Promise<{valid: boolean, error?: string, matchedEntity?: Object}>}
+ */
+async function validateSpecialFields(session, field, newValue) {
+  if (field === "clinic" && session.refLists && session.refLists.clinics) {
+    const matchedClinic = await matchEntity(
+      "clinic",
+      session.refLists.clinics,
+      newValue
+    );
+
+    if (!matchedClinic.id || matchedClinic.name === "") {
+      return {
+        valid: false,
+        error: `Клиника "${newValue}" не найдена в системе. Проверьте название.`,
+      };
+    }
+
+    return { valid: true, matchedEntity: matchedClinic };
+  }
+
+  if (field === "type" && session.refLists && session.refLists.goals) {
+    const matchedGoal = await matchEntity(
+      "type",
+      session.refLists.goals,
+      newValue
+    );
+
+    if (!matchedGoal.id || matchedGoal.name === "") {
+      return {
+        valid: false,
+        error: `Тип лечения "${newValue}" не найден. Проверьте название.`,
+      };
+    }
+
+    return { valid: true, matchedEntity: matchedGoal };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Обработка редактирования поля
+ * @param {Object} bot - Экземпляр бота
+ * @param {number} chatId - ID чата
+ * @param {Object} session - Сессия редактирования
+ * @param {string} newValue - Новое значение поля
+ */
+async function handleFieldEdit(bot, chatId, session, newValue) {
+  const field = session.editingField;
+  const sessionKey = session.key;
+
+  // Обновляем значение поля
+  session.baseData[field] = newValue.trim();
+
+  // Применяем нормализацию для специальных полей
+  if (field === "phone") {
+    session.baseData.phone = normalizePhoneNumber(newValue);
+  }
+
+  // Валидация специальных полей (clinic, type)
+  const specialValidation = await validateSpecialFields(
+    session,
+    field,
+    newValue.trim()
+  );
+
+  if (!specialValidation.valid) {
+    // Валидация не прошла - показываем ошибку и просим ввести снова
+    await bot.sendMessage(
+      chatId,
+      `❌ ${specialValidation.error}\n\nПожалуйста, введите корректное значение:`
+    );
+    return;
+  }
+
+  // Убираем флаг редактирования
+  session.editingField = null;
+
+  // Повторная валидация ВСЕХ полей
+  const validationErrors = validateAllFields(session.baseData);
+
+  if (Object.keys(validationErrors).length > 0) {
+    // Всё ещё есть ошибки - показываем интерфейс снова
+    await bot.sendMessage(
+      chatId,
+      "✅ Значение обновлено. Проверяю остальные поля..."
+    );
+    await showDataEditInterface(
+      bot,
+      chatId,
+      session.baseData,
+      validationErrors,
+      session.refLists
+    );
+  } else {
+    // Все поля валидны - переходим к обычному flow
+    await bot.sendMessage(
+      chatId,
+      "✅ Все данные корректны! Продолжаю обработку..."
+    );
+
+    // Удаляем сессию редактирования
+    removeEditSession(sessionKey);
+
+    // Продолжаем обычную логику обработки
+    const token = await fetchToken();
+    const names = Array.isArray(session.baseData.animal_name)
+      ? session.baseData.animal_name
+      : [session.baseData.animal_name];
+
+    const results = [];
+    for (const name of names) {
+      const result = await processName(
+        name,
+        bot,
+        chatId,
+        session.baseData,
+        token
+      );
+      results.push(result);
+    }
+
+    // Анализируем результаты
+    const confirmationNeeded = results.find(
+      (r) => r.status === "await_confirmation"
+    );
+    if (confirmationNeeded) {
+      return;
+    }
+
+    const errors = results.filter((r) => r.status === "error");
+    if (errors.length > 0) {
+      await bot.sendMessage(
+        chatId,
+        `Ошибки при обработке: ${errors
+          .map((e) => `${e.name} - ${e.error}`)
+          .join(", ")}`
+      );
+    }
+  }
+}
+
+/**
+ * Начало редактирования конкретного поля
+ * @param {Object} bot - Экземпляр бота
+ * @param {number} chatId - ID чата
+ * @param {string} sessionKey - Ключ сессии редактирования
+ * @param {string} field - Имя поля для редактирования
+ */
+async function startFieldEdit(bot, chatId, sessionKey, field) {
+  const session = getEditSession(sessionKey);
+  if (!session) {
+    await bot.sendMessage(
+      chatId,
+      "❌ Сессия редактирования истекла. Отправьте данные заново."
+    );
+    return;
+  }
+
+  // Обновляем сессию - помечаем, какое поле редактируется
+  session.editingField = field;
+  updateEditSession(sessionKey, session);
+
+  // Подсказки для каждого поля
+  const fieldPrompts = {
+    fio: "Введите ФИО в формате: Фамилия Имя Отчество",
+    phone: "Введите номер телефона в формате: +375XXXXXXXXX",
+    address: "Введите полный адрес (улица, дом, квартира)",
+    clinic: "Введите название клиники",
+    animal_type: "Введите тип животного (кошка, собака и т.д.)",
+    animal_name: "Введите кличку животного",
+    type: "Введите цель визита (стерилизация, лечение и т.д.)",
+    date: "Введите дату в формате ДД.ММ.ГГГГ или оставьте пустым для текущей даты",
+  };
+
+  const prompt = fieldPrompts[field] || `Введите новое значение для ${field}`;
+  await bot.sendMessage(chatId, `✏️ ${prompt}`);
+}
+
+/**
+ * Показ интерфейса редактирования данных с кнопками для исправления ошибок
+ * @param {Object} bot - Экземпляр бота
+ * @param {number} chatId - ID чата
+ * @param {Object} baseData - Данные пользователя
+ * @param {Object} errors - Объект с ошибками валидации
+ * @param {Object} refLists - Закешированные справочники
+ */
+async function showDataEditInterface(bot, chatId, baseData, errors, refLists) {
+  // Сохраняем сессию редактирования
+  const sessionKey = storeEditSession(chatId, baseData, errors, refLists);
+
+  // Формируем сообщение с подсветкой ошибочных полей
+  let message = "⚠️ Обнаружены проблемы с данными:\n\n";
+
+  // Показываем каждое поле с индикатором ошибки
+  const fieldLabels = {
+    fio: "👤 ФИО",
+    phone: "📞 Телефон",
+    address: "📍 Адрес",
+    clinic: "🏥 Клиника",
+    animal_type: "🐾 Тип животного",
+    animal_name: "🐾 Имя животного",
+    type: "🎯 Цель визита",
+    date: "📅 Дата",
+  };
+
+  for (const [field, label] of Object.entries(fieldLabels)) {
+    const value = baseData[field] || "(не указано)";
+    const hasError = errors[field];
+    const icon = hasError ? "❌" : "✅";
+
+    message += `${icon} ${label}: ${value}\n`;
+    if (hasError) {
+      message += `   └─ ${errors[field]}\n`;
+    }
+  }
+
+  message += "\n📝 Выберите поле для редактирования:";
+
+  // Создаём inline кнопки для редактирования проблемных полей
+  const keyboard = [];
+
+  for (const [field, error] of Object.entries(errors)) {
+    const label = fieldLabels[field] || field;
+    keyboard.push([
+      {
+        text: `✏️ Исправить ${label}`,
+        callback_data: JSON.stringify({
+          action: "edit_field",
+          field: field,
+          session: sessionKey,
+        }),
+      },
+    ]);
+  }
+
+  // Кнопка отмены
+  keyboard.push([
+    {
+      text: "❌ Отменить",
+      callback_data: JSON.stringify({ reject: true }),
+    },
+  ]);
+
+  await bot.sendMessage(chatId, message, {
+    reply_markup: { inline_keyboard: keyboard },
+  });
 }
 
 module.exports = { handleMessage, handleCallback };

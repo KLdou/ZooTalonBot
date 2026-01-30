@@ -49,6 +49,7 @@ function confirmationKeyboard(key) {
 }
 
 const payloadStore = new Map();
+const editSessionStore = new Map();
 
 function storePayload(chatId, payload) {
   const key = `${chatId}_${Date.now()}_${crypto
@@ -102,6 +103,74 @@ function normalizePhoneNumber(phone) {
   return phone;
 }
 
+/**
+ * Сохранение сессии редактирования с данными и справочниками
+ * @param {number} chatId - ID чата
+ * @param {Object} baseData - Данные пользователя
+ * @param {Object} errors - Объект с ошибками валидации
+ * @param {Object} refLists - Закешированные справочники (types, clinics, goals)
+ * @returns {string} - Ключ сессии
+ */
+function storeEditSession(chatId, baseData, errors, refLists) {
+  const sessionKey = `edit_${chatId}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  
+  editSessionStore.set(sessionKey, {
+    key: sessionKey,
+    baseData: { ...baseData },
+    errors: { ...errors },
+    editingField: null,
+    chatId: chatId,
+    refLists: refLists || null
+  });
+  
+  // Автоматическое удаление через 30 минут
+  setTimeout(() => editSessionStore.delete(sessionKey), 30 * 60 * 1000);
+  
+  return sessionKey;
+}
+
+/**
+ * Получение сессии редактирования по ключу
+ * @param {string} sessionKey - Ключ сессии
+ * @returns {Object|undefined} - Объект сессии или undefined
+ */
+function getEditSession(sessionKey) {
+  return editSessionStore.get(sessionKey);
+}
+
+/**
+ * Получение активной сессии редактирования для данного чата
+ * @param {number} chatId - ID чата
+ * @returns {Object|null} - Объект сессии или null
+ */
+function getActiveEditSession(chatId) {
+  // Находим активную сессию редактирования для данного чата
+  for (const [key, session] of editSessionStore.entries()) {
+    if (session.chatId === chatId) {
+      return session;
+    }
+  }
+  return null;
+}
+
+/**
+ * Обновление сессии редактирования
+ * @param {string} sessionKey - Ключ сессии
+ * @param {Object} updatedSession - Обновлённый объект сессии
+ */
+function updateEditSession(sessionKey, updatedSession) {
+  editSessionStore.set(sessionKey, updatedSession);
+}
+
+/**
+ * Удаление сессии редактирования
+ * @param {string} sessionKey - Ключ сессии
+ * @returns {boolean} - true если сессия была удалена
+ */
+function removeEditSession(sessionKey) {
+  return editSessionStore.delete(sessionKey);
+}
+
 module.exports = {
   log,
   logError,
@@ -112,4 +181,9 @@ module.exports = {
   existsPayload,
   normalizePhoneNumber,
   formatPhoneNumber,
+  storeEditSession,
+  getEditSession,
+  getActiveEditSession,
+  updateEditSession,
+  removeEditSession,
 };
