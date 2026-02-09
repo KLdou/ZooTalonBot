@@ -7,6 +7,42 @@ const provider = process.env.LLM_PROVIDER || "ollama";
 // Константа для количества попыток при неудачном парсинге JSON
 const MAX_RETRY_ATTEMPTS = 2;
 
+// Кеш для matchEntity с TTL 30 минут
+const matchEntityCache = new Map();
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 минут в миллисекундах
+
+function getCacheKey(entityType, query) {
+  return `${entityType}:${query}`;
+}
+
+function isExpired(timestamp) {
+  return Date.now() - timestamp > CACHE_TTL_MS;
+}
+
+function getCachedResult(entityType, query) {
+  const key = getCacheKey(entityType, query);
+  const cached = matchEntityCache.get(key);
+
+  if (cached && !isExpired(cached.timestamp)) {
+    return cached.result;
+  }
+
+  // Удаляем устаревшую запись
+  if (cached) {
+    matchEntityCache.delete(key);
+  }
+
+  return null;
+}
+
+function setCachedResult(entityType, query, result) {
+  const key = getCacheKey(entityType, query);
+  matchEntityCache.set(key, {
+    result: result,
+    timestamp: Date.now(),
+  });
+}
+
 // Пытаемся безопасно извлечь JSON-объект из произвольного текста ответа LLM.
 // Учтены случаи с Markdown-кодовыми блоками (```json ... ```), а также
 // поиск первого корректно сбалансированного блока {...}.
@@ -60,7 +96,7 @@ You need to find out\n
       return await parseUserMessage(text, retryCount + 1);
     }
     throw new Error(
-      `LLM response does not contain valid JSON after ${MAX_RETRY_ATTEMPTS} attempts: ${response}`
+      `LLM response does not contain valid JSON after ${MAX_RETRY_ATTEMPTS} attempts: ${response}`,
     );
   }
   return await reFillEmptyProperties(text, jsonObject);
@@ -115,7 +151,7 @@ async function reFillEmptyProperties(text, jsonObject, retryCount = 0) {
       return await reFillEmptyProperties(text, jsonObject, retryCount + 1);
     }
     throw new Error(
-      `LLM response does not contain valid JSON for reFillEmptyProperties after ${MAX_RETRY_ATTEMPTS} attempts: ${response}`
+      `LLM response does not contain valid JSON for reFillEmptyProperties after ${MAX_RETRY_ATTEMPTS} attempts: ${response}`,
     );
   }
   return mergeWithOverrideEmpty(jsonObject, resultObj);
@@ -159,7 +195,7 @@ function mergeWithOverrideEmpty(mainObj, overrideObj) {
 
 async function findDocument(documents, fio, name, retryCount = 0) {
   const prompt = `Список: ${JSON.stringify(
-    documents
+    documents,
   )}. Есть ли документ на животное ${name} от ${fio} в этом году? Верни JSON вида { exist: true, documentId: '', name: '' }`;
   const response = await llm.sendPrompt(prompt);
   try {
@@ -196,7 +232,7 @@ function stringsMatch80Percent(str1, str2) {
         matrix[i][j] = Math.min(
           matrix[i - 1][j] + 1,
           matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + 1
+          matrix[i - 1][j - 1] + 1,
         );
       }
     }
@@ -208,18 +244,30 @@ function stringsMatch80Percent(str1, str2) {
 }
 
 async function matchEntity(entityType, list, query, retryCount = 0) {
+  // Проверяем кеш только для успешных запросов (retryCount = 0)
+  if (retryCount === 0) {
+    const cachedResult = getCachedResult(entityType, query);
+    if (cachedResult) {
+      return cachedResult;
+    }
+  }
+
   const foundItem = list.find(
     (item) =>
-      item.name && query && item.name.toLowerCase() === query.toLowerCase()
+      item.name && query && item.name.toLowerCase() === query.toLowerCase(),
   );
   if (foundItem) {
-    return {
+    const result = {
       name: foundItem.name,
       id: foundItem.id !== undefined ? foundItem.id : foundItem._id,
     };
+
+    setCachedResult(entityType, query, result);
+
+    return result;
   }
   const prompt = `Найди соответствующий объект для "${query}" скорее всего это поле name в списке объектов типа ${entityType}:\n   ${JSON.stringify(
-    list
+    list,
   )}\n Обязательно верни JSON с name вида { name: '' }. Верни только JSON без пояснений.`;
   const response = await llm.sendPrompt(prompt);
   try {
@@ -228,24 +276,34 @@ async function matchEntity(entityType, list, query, retryCount = 0) {
       if (retryCount < MAX_RETRY_ATTEMPTS) {
         return await matchEntity(entityType, list, query, retryCount + 1);
       }
-      return { id: "", name: "" };
+      const fallbackResult = { id: "", name: "" };
+
+      return fallbackResult;
     }
     const foundItem = list.find(
       (item) =>
         item.name &&
         ollamaResponse.name &&
-        item.name.toLowerCase() === ollamaResponse.name.toLowerCase()
+        item.name.toLowerCase() === ollamaResponse.name.toLowerCase(),
     );
     if (foundItem) {
-      return {
+      const result = {
         name: foundItem.name,
         id: foundItem.id !== undefined ? foundItem.id : foundItem._id,
       };
+
+      setCachedResult(entityType, query, result);
+
+      return result;
     }
-    return { id: "", name: "" };
+    const fallbackResult = { id: "", name: "" };
+
+    return fallbackResult;
   } catch (e) {
     logError(`Error in findObjectInArray for query "${query}"`, e);
-    return { id: "", name: "" };
+    const errorResult = { id: "", name: "" };
+
+    return errorResult;
   }
 }
 
@@ -265,14 +323,14 @@ async function formatAddress(address) {
 «д.» вместо «дом»,
 «кв.» вместо «квартира»,
 «г.» вместо «город».
-Сохрани исходный порядок элементов адреса и не добавляй пояснений — выведи только преобразованный адрес.`
+Сохрани исходный порядок элементов адреса и не добавляй пояснений — выведи только преобразованный адрес.`,
   );
 }
 
 async function formatGoal(type) {
   return askSimpleQuestion(
     `Просклоняй причину обращения "${type}" в творительный падеж.
-    Ответ должен содержать 1-3 слова. Ответ должен НЕ содержать "прошу помочь с". Без кавычек и точек.`
+    Ответ должен содержать 1-3 слова. Ответ должен НЕ содержать "прошу помочь с". Без кавычек и точек.`,
   );
 }
 
@@ -286,13 +344,13 @@ async function formatPet(animalType, animalName) {
 Если кличек несколько — перечисли их через запятую после типа.
 Пример: если тип — «кошка», клички — «Плюша, Марина», то вывод: кошка Плюша, Марина.
 
-Выведи только результат, без дополнительного текста. `
+Выведи только результат, без дополнительного текста. `,
   );
 }
 
 async function formatMonth(today) {
   return askSimpleQuestion(
-    `Сегодня ${today}. Напиши одним словом в родительном падеже название текущего месяца на русском языке. Только одно слово, без кавычек и точек.`
+    `Сегодня ${today}. Напиши одним словом в родительном падеже название текущего месяца на русском языке. Только одно слово, без кавычек и точек.`,
   );
 }
 
@@ -303,7 +361,7 @@ async function formatShortFio(fio) {
 1. Вход: "Иванов Петр Сергеевич" → Выход: "Иванов П.С."
 2. Вход: "Смирнова Анна Викторовна" → Выход: "Смирнова А.В."
 3. Вход: "Петров-Водкин Константин Дмитриевич" → Выход: "Петров-Водкин К.Д."
-Теперь преобразуй: ${fio}`
+Теперь преобразуй: ${fio}`,
   );
 }
 

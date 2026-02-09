@@ -54,18 +54,18 @@ async function handleCallback(bot, query) {
 
     // НОВОЕ: Обработка запроса на редактирование поля
     if (key.action === "edit_field") {
-      await startFieldEdit(bot, chatId, key.session, key.field);
+      await startFieldEdit(bot, chatId, key.field);
       return;
     }
 
     if (!existsPayload(key)) {
       const errorMessage = `Истёк срок действия запроса или данные не найдены для ключа: ${JSON.stringify(
-        key
+        key,
       )}`;
       bot.sendMessage(chatId, errorMessage);
       logError(
         `Ошибка при обработке запроса от ${chatId}`,
-        new Error(errorMessage)
+        new Error(errorMessage),
       );
       return;
     }
@@ -84,7 +84,7 @@ async function handleCallback(bot, query) {
 
       bot.sendMessage(
         chatId,
-        `✅ Документ создан.\nИмя документа: ${doc.name}\nhttps://petapps.org/document/${doc.documentId}`
+        `✅ Документ создан.\nИмя документа: ${doc.name}\nhttps://petapps.org/document/${doc.documentId}`,
       );
       log(`Документ создан: ${doc.name}`);
 
@@ -97,7 +97,7 @@ async function handleCallback(bot, query) {
       removePayload(key);
       bot.sendMessage(
         chatId,
-        `✅ Талон создан.\nНомер: ${newCoupon.name}\nhttps://petapps.org/coupon/${newCoupon.couponId}`
+        `✅ Талон создан.\nНомер: ${newCoupon.name}\nhttps://petapps.org/coupon/${newCoupon.couponId}`,
       );
       log(`Талон создан для ${payload.visitor}`);
       return;
@@ -137,25 +137,58 @@ ${JSON.stringify(msg.chat)}`);
       baseData.phone = normalizePhoneNumber(baseData.phone);
     }
 
+    const token = await fetchToken();
+    // Загружаем справочники с кешированием
+    const types = await getRefListCached(
+      "/coupon-secured/v1/type",
+      token,
+      "types",
+    );
+    const clinics = await getRefListCached(
+      "/coupon-secured/v1/vet",
+      token,
+      "clinics",
+    );
+    const goals = await getRefListCached(
+      "/coupon-secured/v1/goal?type=",
+      token,
+      "goals",
+    );
+
+    const matchedType = await matchEntity("source", types, "call center");
+    const matchedClinic = await matchEntity("clinic", clinics, baseData.clinic);
+    const matchedGoal = await matchEntity("type", goals, baseData.type);
+
     // Валидация всех полей
     const validationErrors = validateAllFields(baseData);
 
-    if (Object.keys(validationErrors).length > 0) {
-      // Найдены ошибки - загружаем справочники и показываем интерфейс редактирования
-      const token = await fetchToken();
-      
-      // Загружаем справочники с кешированием
-      const types = await getRefListCached("/coupon-secured/v1/type", token, "types");
-      const clinics = await getRefListCached("/coupon-secured/v1/vet", token, "clinics");
-      const goals = await getRefListCached("/coupon-secured/v1/goal?type=", token, "goals");
-      
-      const refLists = { types, clinics, goals };
-      
-      await showDataEditInterface(bot, chatId, baseData, validationErrors, refLists);
-      return;
+    // Проверяем, найдены ли справочные значения
+    if (!matchedClinic.id || matchedClinic.name === "") {
+      validationErrors.clinic = `Клиника "${baseData.clinic}" не найдена в системе. Проверьте название.`;
     }
 
-    const token = await fetchToken();
+    if (!matchedGoal.id || matchedGoal.name === "") {
+      validationErrors.type = `Цель визита "${baseData.type}" не найдена. Проверьте название.`;
+    }
+
+    if (!matchedType.id || matchedType.name === "") {
+      validationErrors.source = `Источник "call center" не найден в системе.`;
+    }
+
+    if (Object.keys(validationErrors).length > 0) {
+      // Найдены ошибки - загружаем справочники и показываем интерфейс редактирования
+
+      const refLists = { types, clinics, goals };
+
+      await showDataEditInterface(
+        bot,
+        chatId,
+        baseData,
+        validationErrors,
+        refLists,
+      );
+      return;
+    }
 
     // Обрабатываем каждое имя последовательно для снижения нагрузки на сервер
     const results = [];
@@ -166,7 +199,7 @@ ${JSON.stringify(msg.chat)}`);
 
     // Анализируем результаты
     const confirmationNeeded = results.find(
-      (r) => r.status === "await_confirmation"
+      (r) => r.status === "await_confirmation",
     );
     if (confirmationNeeded) {
       return; // Ждём подтверждения от пользователя
@@ -178,7 +211,7 @@ ${JSON.stringify(msg.chat)}`);
         chatId,
         `Ошибки при обработке: ${errors
           .map((e) => `${e.name} - ${e.error}`)
-          .join(", ")}`
+          .join(", ")}`,
       );
     }
   } catch (err) {
@@ -213,8 +246,8 @@ async function processName(name, bot, chatId, baseData, token) {
         await bot.sendMessage(
           chatId,
           `❌ Невозможно создать документ. Отсутствуют значения для: ${missingDocFields.join(
-            ", "
-          )}`
+            ", ",
+          )}`,
         );
         return { status: "missing_fields", name };
       }
@@ -228,7 +261,7 @@ async function processName(name, bot, chatId, baseData, token) {
       await bot.sendMessage(
         chatId,
         `Создать документ для животного: ${name}\nФИО Владельца: ${baseData.fio}`,
-        confirmationKeyboard(docKey)
+        confirmationKeyboard(docKey),
       );
 
       return { status: "await_confirmation", name, docKey };
@@ -248,11 +281,23 @@ async function createTalonFlow(
   baseData,
   docInfoOrDoc,
   token,
-  name
+  name,
 ) {
-  const types = await getRefListCached("/coupon-secured/v1/type", token, "types");
-  const clinics = await getRefListCached("/coupon-secured/v1/vet", token, "clinics");
-  const goals = await getRefListCached("/coupon-secured/v1/goal?type=", token, "goals");
+  const types = await getRefListCached(
+    "/coupon-secured/v1/type",
+    token,
+    "types",
+  );
+  const clinics = await getRefListCached(
+    "/coupon-secured/v1/vet",
+    token,
+    "clinics",
+  );
+  const goals = await getRefListCached(
+    "/coupon-secured/v1/goal?type=",
+    token,
+    "goals",
+  );
 
   const matchedType = await matchEntity("source", types, "call center");
   const matchedClinic = await matchEntity("clinic", clinics, baseData.clinic);
@@ -276,8 +321,8 @@ async function createTalonFlow(
     await bot.sendMessage(
       chatId,
       `❌ Невозможно создать талон. Отсутствуют значения для: ${missingFields.join(
-        ", "
-      )}`
+        ", ",
+      )}`,
     );
     return;
   }
@@ -292,7 +337,7 @@ async function createTalonFlow(
 Клиника: ${matchedClinic.name}
 Цель: ${matchedGoal.name}
 От кого: ${matchedType.name}`,
-    confirmationKeyboard(key)
+    confirmationKeyboard(key),
   );
 }
 
@@ -322,20 +367,20 @@ async function CreateDocumentFile(baseData, bot, chatId) {
     "..",
     "..",
     "documents",
-    "example.docx"
+    "example.docx",
   );
   const outputFilename = path.join(
     __dirname,
     "..",
     "..",
     "documents",
-    `${baseData.animal_name} - ${docxPayload.fio}.docx`
+    `${baseData.animal_name} - ${docxPayload.fio}.docx`,
   );
 
   const newFile = await openAndReplacePlaceholders(
     inputFilename,
     outputFilename,
-    docxPayload
+    docxPayload,
   );
   if (bot && chatId && newFile) {
     bot
@@ -347,7 +392,7 @@ async function CreateDocumentFile(baseData, bot, chatId) {
           filename: `${baseData.animal_name} - ${docxPayload.fio}.docx`,
           contentType:
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        }
+        },
       )
       .then(() => console.log("Файл успешно отправлен!"))
       .catch((err) => logError("Ошибка отправки", err));
@@ -368,7 +413,7 @@ async function validateSpecialFields(session, field, newValue) {
     const matchedClinic = await matchEntity(
       "clinic",
       session.refLists.clinics,
-      newValue
+      newValue,
     );
 
     if (!matchedClinic.id || matchedClinic.name === "") {
@@ -385,7 +430,7 @@ async function validateSpecialFields(session, field, newValue) {
     const matchedGoal = await matchEntity(
       "type",
       session.refLists.goals,
-      newValue
+      newValue,
     );
 
     if (!matchedGoal.id || matchedGoal.name === "") {
@@ -424,14 +469,14 @@ async function handleFieldEdit(bot, chatId, session, newValue) {
   const specialValidation = await validateSpecialFields(
     session,
     field,
-    newValue.trim()
+    newValue.trim(),
   );
 
   if (!specialValidation.valid) {
     // Валидация не прошла - показываем ошибку и просим ввести снова
     await bot.sendMessage(
       chatId,
-      `❌ ${specialValidation.error}\n\nПожалуйста, введите корректное значение:`
+      `❌ ${specialValidation.error}\n\nПожалуйста, введите корректное значение:`,
     );
     return;
   }
@@ -446,20 +491,20 @@ async function handleFieldEdit(bot, chatId, session, newValue) {
     // Всё ещё есть ошибки - показываем интерфейс снова
     await bot.sendMessage(
       chatId,
-      "✅ Значение обновлено. Проверяю остальные поля..."
+      "✅ Значение обновлено. Проверяю остальные поля...",
     );
     await showDataEditInterface(
       bot,
       chatId,
       session.baseData,
       validationErrors,
-      session.refLists
+      session.refLists,
     );
   } else {
     // Все поля валидны - переходим к обычному flow
     await bot.sendMessage(
       chatId,
-      "✅ Все данные корректны! Продолжаю обработку..."
+      "✅ Все данные корректны! Продолжаю обработку...",
     );
 
     // Удаляем сессию редактирования
@@ -478,14 +523,14 @@ async function handleFieldEdit(bot, chatId, session, newValue) {
         bot,
         chatId,
         session.baseData,
-        token
+        token,
       );
       results.push(result);
     }
 
     // Анализируем результаты
     const confirmationNeeded = results.find(
-      (r) => r.status === "await_confirmation"
+      (r) => r.status === "await_confirmation",
     );
     if (confirmationNeeded) {
       return;
@@ -497,7 +542,7 @@ async function handleFieldEdit(bot, chatId, session, newValue) {
         chatId,
         `Ошибки при обработке: ${errors
           .map((e) => `${e.name} - ${e.error}`)
-          .join(", ")}`
+          .join(", ")}`,
       );
     }
   }
@@ -507,22 +552,21 @@ async function handleFieldEdit(bot, chatId, session, newValue) {
  * Начало редактирования конкретного поля
  * @param {Object} bot - Экземпляр бота
  * @param {number} chatId - ID чата
- * @param {string} sessionKey - Ключ сессии редактирования
  * @param {string} field - Имя поля для редактирования
  */
-async function startFieldEdit(bot, chatId, sessionKey, field) {
-  const session = getEditSession(sessionKey);
+async function startFieldEdit(bot, chatId, field) {
+  const session = getActiveEditSession(chatId);
   if (!session) {
     await bot.sendMessage(
       chatId,
-      "❌ Сессия редактирования истекла. Отправьте данные заново."
+      "❌ Сессия редактирования истекла. Отправьте данные заново.",
     );
     return;
   }
 
   // Обновляем сессию - помечаем, какое поле редактируется
   session.editingField = field;
-  updateEditSession(sessionKey, session);
+  updateEditSession(session.key, session);
 
   // Подсказки для каждого поля
   const fieldPrompts = {
@@ -591,7 +635,7 @@ async function showDataEditInterface(bot, chatId, baseData, errors, refLists) {
         callback_data: JSON.stringify({
           action: "edit_field",
           field: field,
-          session: sessionKey,
+          chat: chatId,
         }),
       },
     ]);
