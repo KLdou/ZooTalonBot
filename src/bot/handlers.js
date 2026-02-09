@@ -300,7 +300,6 @@ async function CreateDocumentFile(baseData, bot, chatId) {
   const today = new Date();
 
   const address = await formatAddress(baseData.address);
-  const goal = await formatGoal(baseData.type);
   const pet = await formatPet(baseData.animal_type, baseData.animal_name);
   const month = await formatMonth(today);
   const shortFio = await formatShortFio(baseData.fio);
@@ -308,13 +307,9 @@ async function CreateDocumentFile(baseData, bot, chatId) {
   docxPayload = {
     fio: baseData.fio,
     address,
-    homePhone: /^\+37517/.test(baseData.phone)
-      ? formatPhoneNumber(baseData.phone)
-      : "",
     mobilePhone: /^\+375(?!17)\d{9}$/.test(baseData.phone)
       ? formatPhoneNumber(baseData.phone)
       : "",
-    goal,
     pet,
     day: today.toLocaleDateString("ru-RU", { day: "2-digit" }),
     month,
