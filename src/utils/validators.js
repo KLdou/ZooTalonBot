@@ -31,11 +31,6 @@ function validateDate(dateString) {
     return { valid: false, error: "Дата не может быть пустой" };
   }
   
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) {
-    return { valid: false, error: "Некорректный формат даты" };
-  }
-  
   return { valid: true };
 }
 
