@@ -194,6 +194,19 @@ function mergeWithOverrideEmpty(mainObj, overrideObj) {
 }
 
 async function findDocument(documents, fio, name, retryCount = 0) {
+  const possibleName = `${name} - ${fio}`;
+
+  const possibleDocument = documents.find((o) =>
+    stringsMatch80Percent(possibleName, o.name, 95),
+  );
+  if (possibleDocument) {
+    return {
+      exist: true,
+      documentId: possibleDocument.documentId,
+      name: possibleDocument.name,
+    };
+  }
+
   const prompt = `Список: ${JSON.stringify(
     documents,
   )}. Есть ли документ на животное ${name} от ${fio} в этом году? Верни JSON вида { exist: true, documentId: '', name: '' }`;
@@ -212,7 +225,7 @@ async function findDocument(documents, fio, name, retryCount = 0) {
   }
 }
 
-function stringsMatch80Percent(str1, str2) {
+function stringsMatch80Percent(str1, str2, persent = 80) {
   str1 = (str1 || "").toLowerCase();
   str2 = (str2 || "").toLowerCase();
   const len1 = str1.length;
@@ -240,7 +253,7 @@ function stringsMatch80Percent(str1, str2) {
   const maxLength = Math.max(len1, len2);
   const distance = matrix[len1][len2];
   const similarity = (maxLength - distance) / maxLength;
-  return similarity >= 0.8;
+  return similarity >= persent / 100;
 }
 
 async function matchEntity(entityType, list, query, retryCount = 0) {
