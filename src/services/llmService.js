@@ -281,7 +281,8 @@ async function matchEntity(entityType, list, query, retryCount = 0) {
   }
   const prompt = `Найди соответствующий объект для "${query}" скорее всего это поле name в списке объектов типа ${entityType}:\n   ${JSON.stringify(
     list,
-  )}\n Обязательно верни JSON с name вида { name: '' }. Верни только JSON без пояснений.`;
+  )}\n .Очисти "${query}" от адреса и названия типа заведения(клиника, лечебница, больница), например "клиника Алешка ул. Строителей" должно искать как "Алешка"
+  \n Обязательно верни JSON с name вида { name: '' }. Верни только JSON без пояснений.`;
   const response = await llm.sendPrompt(prompt);
   try {
     const ollamaResponse = extractJsonFromText(response);
