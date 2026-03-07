@@ -19,7 +19,7 @@ function transliterate(text) {
     'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya', ' ': ' '
   };
 
-  return text.split('').map(char => translitMap[char] || char).join('');
+  return text.split('').map(char => char in translitMap ? translitMap[char] : char).join('');
 }
 
 function removeFileAfterSend(filePath) {
