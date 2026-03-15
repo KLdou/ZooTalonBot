@@ -1,0 +1,19 @@
+services:
+  zoo-talon-bot:
+    image: ghcr.io/kldou/zoo-talon-bot:latest
+    container_name: zoo-talon-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 300M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

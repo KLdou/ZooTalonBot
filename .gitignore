@@ -2,4 +2,12 @@
 documents/
 node_modules/
 logger/
+# Логи
+logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Временные файлы Docker (если делал архивы)
+*.tar

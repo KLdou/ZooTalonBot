@@ -1,4 +1,4 @@
-// Универсальный сервис для работы с LLM-провайдерами (ollama, openrouter)
+﻿// Универсальный сервис для работы с LLM-провайдерами (ollama, openrouter)
 // Выбор провайдера через process.env.LLM_PROVIDER ("ollama" или "openrouter")
 
 const { logError } = require("../utils/helpers");
@@ -88,7 +88,16 @@ You will get text data where each line should be mapped to property of json obje
 Order of lines in message can be different. Be sure that every property is filled.\n
 Return only json without any explanations.\n
 You need to find out\n 
-1.Surname, First Name, Patronymic (should be saved as one string as fio property in json)\n2.Address (should be address property in json)\n3.Phone (should be phone property in json)\n4.Name of Veterinary Clinic (should be clinic property in json)\n5.Date of visit (should be date property in json)\n6.Type of animal, e.g. Cat or dog (should be animal_type property in json)\n7.Name of animal (should be animal_name property in json)\n8.Type of treatment: Sterilization, treatment (should be type property in json)\nCheck message below \n"""${text}""".\n`;
+1.Surname, First Name, Patronymic (should be saved as one string as fio property in json)\n
+2.Address (should be address property in json)\n
+3.Phone (should be phone property in json)\n
+4.Name of Veterinary Clinic (should be clinic property in json)\n
+5.Date of visit (should be date property in json)\n
+6.Type of animal, e.g. Cat or dog (should be animal_type property in json)\n
+7.Name of animal (should be animal_name property in json)\n
+8.Information, where animal was found(should be place property in json)\n
+9.Type of treatment: Sterilization, treatment (should be type property in json)\n
+Check message below \n"""${text}""".\n`;
   const response = await llm.sendPrompt(prompt);
   const jsonObject = extractJsonFromText(response);
   if (!jsonObject) {
@@ -341,6 +350,30 @@ async function formatAddress(address) {
   );
 }
 
+async function formatFoundPlace(place) {
+  const sourcePlace = String(place || "").trim();
+  if (!sourcePlace) {
+    return "";
+  }
+
+  const response = await askSimpleQuestion(
+    `Преобразуй текст места, где найдено животное: "${sourcePlace}".
+Верни ТОЛЬКО фразу, которая может завершить предложение: "Животное было найдено ...".
+Сохрани исходный порядок элементов адреса и не добавляй пояснений — выведи только преобразованный адрес.
+Не возвращай начало предложения, кавычки и точку в конце. Сохрани исходный смысл.`,
+  );
+
+  let formattedPlace = String(response || "").trim();
+  formattedPlace = formattedPlace.replace(/^["'\s]+|["'\s]+$/g, "");
+  formattedPlace = formattedPlace.replace(
+    /^(?:the\s+animal\s+was\s+found|животное\s+было\s+найдено|zhivotnoe\s+bylo\s+naideno)\s*/iu,
+    "",
+  );
+  formattedPlace = formattedPlace.replace(/^\.\s*/, "").trim();
+
+  return formattedPlace || sourcePlace;
+}
+
 async function formatGoal(type) {
   return askSimpleQuestion(
     `Просклоняй причину обращения "${type}" в творительный падеж.
@@ -385,6 +418,7 @@ module.exports = {
   matchEntity,
   askSimpleQuestion,
   formatAddress,
+  formatFoundPlace,
   formatGoal,
   formatPet,
   formatMonth,

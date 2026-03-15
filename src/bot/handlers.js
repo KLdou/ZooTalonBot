@@ -1,4 +1,4 @@
-const {
+﻿const {
   log,
   logError,
   confirmationKeyboard,
@@ -33,6 +33,7 @@ const {
   formatPet,
   formatMonth,
   formatShortFio,
+  formatFoundPlace,
 } = require("../services/llmService");
 const { validateAllFields } = require("../utils/validators");
 const { openAndReplacePlaceholders } = require("../utils/docxGenerator");
@@ -235,6 +236,7 @@ async function processName(name, bot, chatId, baseData, token) {
         applicant: baseData.fio,
         phone: baseData.phone,
         address: baseData.address,
+        notes: baseData.animal_type,
         date: startOfDay.toISOString(),
       };
 
@@ -348,10 +350,12 @@ async function CreateDocumentFile(baseData, bot, chatId) {
   const pet = await formatPet(baseData.animal_type, baseData.animal_name);
   const month = await formatMonth(today);
   const shortFio = await formatShortFio(baseData.fio);
+  const place = baseData.place ? await formatFoundPlace(baseData.place) : "";
 
-  docxPayload = {
+  const docxPayload = {
     fio: baseData.fio,
     address,
+    place,
     mobilePhone: /^\+375(?!17)\d{9}$/.test(baseData.phone)
       ? formatPhoneNumber(baseData.phone)
       : "",
