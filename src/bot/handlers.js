@@ -156,7 +156,7 @@ ${JSON.stringify(msg.chat)}`);
       "goals",
     );
 
-    const matchedType = await matchEntity("source", types, "call center");
+    const matchedType = await matchEntity("source", types, "call-center");
     const matchedClinic = await matchEntity("clinic", clinics, baseData.clinic);
     const matchedGoal = await matchEntity("type", goals, baseData.type);
 
@@ -173,7 +173,7 @@ ${JSON.stringify(msg.chat)}`);
     }
 
     if (!matchedType.id || matchedType.name === "") {
-      validationErrors.source = `Источник "call center" не найден в системе.`;
+      validationErrors.source = `Источник "call-center" не найден в системе.`;
     }
 
     if (Object.keys(validationErrors).length > 0) {

@@ -291,7 +291,7 @@ async function matchEntity(entityType, list, query, retryCount = 0) {
   const prompt = `Найди соответствующий объект для "${query}" скорее всего это поле name в списке объектов типа ${entityType}:\n   ${JSON.stringify(
     list,
   )}\n .Очисти "${query}" от адреса и названия типа заведения(клиника, лечебница, больница), например "клиника Алешка ул. Строителей" должно искать как "Алешка"
-  \n Обязательно верни JSON с name вида { name: '' }. Верни только JSON без пояснений.`;
+  \n Обязательно верни JSON с name вида { id:'', name: '' }. Верни только JSON без пояснений.`;
   const response = await llm.sendPrompt(prompt);
   try {
     const ollamaResponse = extractJsonFromText(response);
@@ -314,11 +314,25 @@ async function matchEntity(entityType, list, query, retryCount = 0) {
         name: foundItem.name,
         id: foundItem.id !== undefined ? foundItem.id : foundItem._id,
       };
-
       setCachedResult(entityType, query, result);
 
       return result;
     }
+
+    foundItem = list.find(
+      (item) =>
+        (item.id || item._id) === (ollamaResponse.id || ollamaResponse._id),
+    );
+    if (foundItem) {
+      const result = {
+        name: foundItem.name,
+        id: foundItem.id !== undefined ? foundItem.id : foundItem._id,
+      };
+      setCachedResult(entityType, query, result);
+
+      return result;
+    }
+
     const fallbackResult = { id: "", name: "" };
 
     return fallbackResult;
@@ -359,7 +373,12 @@ async function formatFoundPlace(place) {
   const response = await askSimpleQuestion(
     `Преобразуй текст места, где найдено животное: "${sourcePlace}".
 Верни ТОЛЬКО фразу, которая может завершить предложение: "Животное было найдено ...".
-Сохрани исходный порядок элементов адреса и не добавляй пояснений — выведи только преобразованный адрес.
+Если это адрес, то приведи его к официальному формату, используя общепринятые сокращения:
+«ул.» вместо «улица»,
+«д.» вместо «дом» или «деревня» в зависимости от контекста,
+«г.» вместо «город».
+При этом оставь поясняющие слова, если они есть, например "возле", "рядом с", "на территории" и т.д. 
+Сохрани исходный смысл и порядок слов, но сократи адресные компоненты и не добавляй пояснений — выведи только преобразованный адрес.
 Не возвращай начало предложения, кавычки и точку в конце. Сохрани исходный смысл.`,
   );
 
