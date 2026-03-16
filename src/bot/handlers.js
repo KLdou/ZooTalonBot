@@ -306,11 +306,11 @@ async function createTalonFlow(
   const matchedGoal = await matchEntity("type", goals, baseData.type);
 
   const talonPayload = {
-    type: matchedType.id,
-    vet: matchedClinic.id,
+    type: matchedType?.id,
+    vet: matchedClinic?.id,
     visitor: baseData.fio,
     user: API_USER,
-    goal: matchedGoal.id,
+    goal: matchedGoal?.id,
     applicationRequired: true,
     application: docInfoOrDoc.documentId,
   };
