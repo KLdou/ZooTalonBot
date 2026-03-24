@@ -1,8 +1,10 @@
-﻿// Универсальный сервис для работы с LLM-провайдерами (ollama, openrouter)
-// Выбор провайдера через process.env.LLM_PROVIDER ("ollama" или "openrouter")
+﻿// Универсальный сервис для работы с LLM-провайдерами (ollama, openrouter, ollamacloud)
+// Выбор провайдера через process.env.LLM_PROVIDER или динамически через setProvider()
 
-const { logError } = require("../utils/helpers");
-const provider = process.env.LLM_PROVIDER || "ollama";
+const { log, logError } = require("../utils/helpers");
+
+const PROVIDERS = ["ollama", "openrouter", "ollamacloud"];
+let currentProvider = process.env.LLM_PROVIDER || "openrouter";
 
 // Константа для количества попыток при неудачном парсинге JSON
 const MAX_RETRY_ATTEMPTS = 2;
@@ -79,8 +81,27 @@ function extractJsonFromText(text) {
   return null;
 }
 
-let llm;
-llm = provider === "openrouter" ? require("./openrouter") : require("./ollama");
+const providers = {
+  openrouter: require("./openrouter"),
+  ollamacloud: require("./ollamaCloud"),
+  ollama: require("./ollama"),
+};
+
+function getLlm() {
+  return providers[currentProvider] || providers.openrouter;
+}
+
+function getProvider() {
+  return currentProvider;
+}
+
+function setProvider(name) {
+  if (!PROVIDERS.includes(name)) {
+    throw new Error(`Unknown provider: ${name}. Available: ${PROVIDERS.join(", ")}`);
+  }
+  currentProvider = name;
+  log(`LLM provider switched to: ${name}`);
+}
 
 async function parseUserMessage(text, retryCount = 0) {
   const prompt = `You are the registrar of an organization dedicated to helping homeless animals.\n
@@ -98,7 +119,7 @@ You need to find out\n
 8.Information, where animal was found(should be place property in json)\n
 9.Type of treatment: Sterilization, treatment (should be type property in json)\n
 Check message below \n"""${text}""".\n`;
-  const response = await llm.sendPrompt(prompt);
+  const response = await getLlm().sendPrompt(prompt);
   const jsonObject = extractJsonFromText(response);
   if (!jsonObject) {
     if (retryCount < MAX_RETRY_ATTEMPTS) {
@@ -153,7 +174,7 @@ async function reFillEmptyProperties(text, jsonObject, retryCount = 0) {
 Пустые поля: ${emptyProperties.join()}
 
 Верни ТОЛЬКО JSON-объект без пояснений.`;
-  const response = await llm.sendPrompt(prompt);
+  const response = await getLlm().sendPrompt(prompt);
   const resultObj = extractJsonFromText(response);
   if (!resultObj) {
     if (retryCount < MAX_RETRY_ATTEMPTS) {
@@ -219,7 +240,7 @@ async function findDocument(documents, fio, name, retryCount = 0) {
   const prompt = `Список: ${JSON.stringify(
     documents,
   )}. Есть ли документ на животное ${name} от ${fio} в этом году? Верни JSON вида { exist: true, documentId: '', name: '' }`;
-  const response = await llm.sendPrompt(prompt);
+  const response = await getLlm().sendPrompt(prompt);
   try {
     const parsed = extractJsonFromText(response);
     if (!parsed) {
@@ -294,7 +315,7 @@ async function matchEntity(entityType, list, query, retryCount = 0) {
   \n Иногда объекты в списке могут содержать знаки препинания, сокращения или незначительные опечатки, которые не должны мешать правильному сопоставлению.
   \n Верни целое значение name из списка, которое наиболее точно соответствует запросу.
   \n Обязательно верни JSON с name вида { id:'', name: '' }. Верни только JSON без пояснений.`;
-  const response = await llm.sendPrompt(prompt);
+  const response = await getLlm().sendPrompt(prompt);
   try {
     const ollamaResponse = extractJsonFromText(response);
     if (!ollamaResponse) {
@@ -347,7 +368,7 @@ async function matchEntity(entityType, list, query, retryCount = 0) {
 }
 
 async function askSimpleQuestion(text) {
-  const response = await llm.sendPrompt(text);
+  const response = await getLlm().sendPrompt(text);
   try {
     return response;
   } catch {
@@ -444,4 +465,7 @@ module.exports = {
   formatPet,
   formatMonth,
   formatShortFio,
+  getProvider,
+  setProvider,
+  PROVIDERS,
 };

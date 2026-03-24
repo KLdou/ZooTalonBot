@@ -34,6 +34,9 @@ const {
   formatMonth,
   formatShortFio,
   formatFoundPlace,
+  getProvider,
+  setProvider,
+  PROVIDERS,
 } = require("../services/llmService");
 const { validateAllFields } = require("../utils/validators");
 const { openAndReplacePlaceholders } = require("../utils/docxGenerator");
@@ -56,6 +59,17 @@ async function handleCallback(bot, query) {
     // НОВОЕ: Обработка запроса на редактирование поля
     if (key.action === "edit_field") {
       await startFieldEdit(bot, chatId, key.field);
+      return;
+    }
+
+    // Обработка выбора LLM-провайдера
+    if (key.action === "set_provider") {
+      try {
+        setProvider(key.provider);
+        await bot.sendMessage(chatId, `✅ LLM-провайдер переключён на: ${key.provider}`);
+      } catch (err) {
+        await bot.sendMessage(chatId, `❌ Ошибка: ${err.message}`);
+      }
       return;
     }
 
@@ -120,6 +134,26 @@ ${JSON.stringify(msg.chat)}`);
   }
 
   log(`📩 Получено сообщение от ${chatId}: ${msg.text}`);
+
+  // Команда /provider — выбор LLM-провайдера
+  if (msg.text && msg.text.trim() === "/provider") {
+    const current = getProvider();
+    const keyboard = PROVIDERS.map((p) => [
+      {
+        text: `${p === current ? "✅ " : ""}${p}`,
+        callback_data: JSON.stringify({ action: "set_provider", provider: p }),
+      },
+    ]);
+    await bot.sendMessage(
+      chatId,
+      `Текущий LLM-провайдер: *${current}*\nВыберите провайдер:`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: keyboard },
+      },
+    );
+    return;
+  }
 
   try {
     // Проверяем, не находимся ли мы в режиме редактирования
