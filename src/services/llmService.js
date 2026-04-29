@@ -9,6 +9,19 @@ let currentProvider = process.env.LLM_PROVIDER || "openrouter";
 // Константа для количества попыток при неудачном парсинге JSON
 const MAX_RETRY_ATTEMPTS = 2;
 
+const USER_MESSAGE_FIELDS = [
+  "fio",
+  "address",
+  "phone",
+  "clinic",
+  "date",
+  "animal_type",
+  "coat_color",
+  "animal_name",
+  "place",
+  "type",
+];
+
 // Кеш для matchEntity с TTL 30 минут
 const matchEntityCache = new Map();
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 минут в миллисекундах
@@ -43,6 +56,16 @@ function setCachedResult(entityType, query, result) {
     result: result,
     timestamp: Date.now(),
   });
+}
+
+function ensureUserMessageFields(jsonObject) {
+  const result = { ...jsonObject };
+  for (const field of USER_MESSAGE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(result, field)) {
+      result[field] = null;
+    }
+  }
+  return result;
 }
 
 // Пытаемся безопасно извлечь JSON-объект из произвольного текста ответа LLM.
@@ -115,9 +138,10 @@ You need to find out\n
 4.Name of Veterinary Clinic (should be clinic property in json)\n
 5.Date of visit (should be date property in json)\n
 6.Type of animal, e.g. Cat or dog (should be animal_type property in json)\n
-7.Name of animal (should be animal_name property in json)\n
-8.Information, where animal was found(should be place property in json)\n
-9.Type of treatment: Sterilization, treatment (should be type property in json)\n
+7.Сoat color, e.g. Black, White, Tricolor, Point (should be coat_color property in json)\n
+8.Name of animal (should be animal_name property in json)\n
+9.Information, where animal was found(should be place property in json)\n
+10.Type of treatment: Sterilization, treatment (should be type property in json)\n
 Check message below \n"""${text}""".\n`;
   const response = await getLlm().sendPrompt(prompt);
   const jsonObject = extractJsonFromText(response);
@@ -129,7 +153,7 @@ Check message below \n"""${text}""".\n`;
       `LLM response does not contain valid JSON after ${MAX_RETRY_ATTEMPTS} attempts: ${response}`,
     );
   }
-  return await reFillEmptyProperties(text, jsonObject);
+  return await reFillEmptyProperties(text, ensureUserMessageFields(jsonObject));
 }
 
 async function reFillEmptyProperties(text, jsonObject, retryCount = 0) {
@@ -423,15 +447,16 @@ async function formatGoal(type) {
   );
 }
 
-async function formatPet(animalType, animalName) {
+async function formatPet(animalType, coatColor, animalName) {
   return askSimpleQuestion(
     `Составь список из одного или нескольких животных в именительном падеже.
 Тип животного: ${animalType.toLowerCase()}
+Окрас: ${coatColor}
 Клички: ${animalName}
 
-Каждая запись должна содержать ровно два слова: тип животного (строчными) и кличку.
+Каждая запись должна содержать тип животного (строчными), окрас и кличку.
 Если кличек несколько — перечисли их через запятую после типа.
-Пример: если тип — «кошка», клички — «Плюша, Марина», то вывод: кошка Плюша, Марина.
+Пример: если тип — «кошка», окрас — «трехцветная», клички — «Плюша, Марина», то вывод: кошка трехцветная Плюша, Марина.
 
 Выведи только результат, без дополнительного текста. `,
   );

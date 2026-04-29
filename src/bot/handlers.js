@@ -381,7 +381,11 @@ async function CreateDocumentFile(baseData, bot, chatId) {
   const today = new Date();
 
   const address = await formatAddress(baseData.address);
-  const pet = await formatPet(baseData.animal_type, baseData.animal_name);
+  const pet = await formatPet(
+    baseData.animal_type,
+    baseData.coat_color,
+    baseData.animal_name,
+  );
   const month = await formatMonth(today);
   const shortFio = await formatShortFio(baseData.fio);
   const place = baseData.place ? await formatFoundPlace(baseData.place) : "";
@@ -613,6 +617,7 @@ async function startFieldEdit(bot, chatId, field) {
     address: "Введите полный адрес (улица, дом, квартира)",
     clinic: "Введите название клиники",
     animal_type: "Введите тип животного (кошка, собака и т.д.)",
+    coat_color: "Введите окрас животного",
     animal_name: "Введите кличку животного",
     type: "Введите цель визита (стерилизация, лечение и т.д.)",
     date: "Введите дату в формате ДД.ММ.ГГГГ или оставьте пустым для текущей даты",
@@ -644,6 +649,7 @@ async function showDataEditInterface(bot, chatId, baseData, errors, refLists) {
     address: "📍 Адрес",
     clinic: "🏥 Клиника",
     animal_type: "🐾 Тип животного",
+    coat_color: "🎨 Окрас животного",
     animal_name: "🐾 Имя животного",
     type: "🎯 Цель визита",
     date: "📅 Дата",

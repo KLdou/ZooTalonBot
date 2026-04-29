@@ -116,6 +116,19 @@ function validateAnimalType(animalType) {
 }
 
 /**
+ * Валидация окраса животного - базовая проверка на наличие
+ * @param {string} coatColor - Окрас животного для проверки
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateCoatColor(coatColor) {
+  if (!coatColor || coatColor.trim().length === 0) {
+    return { valid: false, error: "Окрас животного не может быть пустым" };
+  }
+
+  return { valid: true };
+}
+
+/**
  * Валидация типа обращения - базовая проверка на наличие
  * @param {string} type - Тип обращения для проверки
  * @returns {{valid: boolean, error?: string}}
@@ -176,6 +189,11 @@ function validateAllFields(baseData) {
     errors.animal_type = animalTypeCheck.error;
   }
   
+  const coatColorCheck = validateCoatColor(baseData.coat_color);
+  if (!coatColorCheck.valid) {
+    errors.coat_color = coatColorCheck.error;
+  }
+  
   const typeCheck = validateType(baseData.type);
   if (!typeCheck.valid) {
     errors.type = typeCheck.error;
@@ -192,6 +210,7 @@ module.exports = {
   validateClinic,
   validateAnimalName,
   validateAnimalType,
+  validateCoatColor,
   validateType,
   validateAllFields,
 };
