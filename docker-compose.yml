@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./logger:/app/logger
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
     deploy:
