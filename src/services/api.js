@@ -89,6 +89,16 @@ async function getRefListCached(endpoint, token, cacheKey) {
   return data;
 }
 
+async function getCouponRefListsCached(token) {
+  const [types, clinics, goals] = await Promise.all([
+    getRefListCached("/coupon-secured/v1/type", token, "types"),
+    getRefListCached("/coupon-secured/v1/vet", token, "clinics"),
+    getRefListCached("/coupon-secured/v1/goal?type=", token, "goals"),
+  ]);
+
+  return { types, clinics, goals };
+}
+
 /**
  * Очистка кеша справочников (для ручного сброса админами)
  */
@@ -124,6 +134,7 @@ module.exports = {
   getDocumentsWithSearch,
   getRefList,
   getRefListCached,
+  getCouponRefListsCached,
   clearRefListCache,
   createCoupon,
   createDocument,
