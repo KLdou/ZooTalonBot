@@ -9,6 +9,29 @@ const { checkDocument } = require("./document");
 const { handleFieldEdit, showDataEditInterface } = require("./editField");
 const { createTalonFlow } = require("./talon");
 
+async function processName(name, bot, chatId, baseData, token) {
+  const documentResult = await checkDocument(
+    name,
+    bot,
+    chatId,
+    baseData,
+    token,
+  );
+  if (documentResult.status !== "document_found") {
+    return documentResult;
+  }
+
+  await createTalonFlow(
+    bot,
+    chatId,
+    baseData,
+    documentResult.document,
+    token,
+    name,
+  );
+  return { status: "talon_created", name };
+}
+
 async function processNames(names, bot, chatId, baseData, token) {
   const results = [];
   for (const name of names) {
@@ -23,28 +46,6 @@ async function processNames(names, bot, chatId, baseData, token) {
     return results;
   }
 
-  async function processName(name, bot, chatId, baseData, token) {
-    const documentResult = await checkDocument(
-      name,
-      bot,
-      chatId,
-      baseData,
-      token,
-    );
-    if (documentResult.status !== "document_found") {
-      return documentResult;
-    }
-
-    await createTalonFlow(
-      bot,
-      chatId,
-      baseData,
-      documentResult.document,
-      token,
-      name,
-    );
-    return { status: "talon_created", name };
-  }
   const errors = results.filter((result) => result.status === "error");
   if (errors.length > 0) {
     await bot.sendMessage(
