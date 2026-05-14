@@ -3,6 +3,8 @@ const { log } = require("../utils/helpers");
 
 const API_BASE = "https://server-eu-1.petapps.org/091d334e2bc5";
 const API_TOKEN = process.env.API_COOKIE;
+const TOKEN_CACHE_TTL = 3 * 60 * 1000;
+let tokenCache = { value: null, timestamp: 0 };
 
 // Глобальный кеш для справочников
 let refListCache = {
@@ -15,9 +17,15 @@ let refListCache = {
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 async function fetchToken() {
+  const now = Date.now();
+  if (tokenCache.value && now - tokenCache.timestamp < TOKEN_CACHE_TTL) {
+    return tokenCache.value;
+  }
+
   const { data } = await axios.get(`${API_BASE}/user/v1/token`, {
     headers: { Cookie: API_TOKEN },
   });
+  tokenCache = { value: data.access_token, timestamp: now };
   return data.access_token;
 }
 

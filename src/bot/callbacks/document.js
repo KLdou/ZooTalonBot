@@ -1,5 +1,5 @@
 const { fetchToken, createDocument } = require("../../services/api");
-const { getPayload, removePayload, log } = require("../../utils/helpers");
+const { getPayload, removePayload, log, logError } = require("../../utils/helpers");
 
 async function handleDocument(bot, chatId, key, deps) {
   const token = await fetchToken();
@@ -7,8 +7,12 @@ async function handleDocument(bot, chatId, key, deps) {
   const doc = await createDocument(payload, token);
 
   try {
-    deps.createDocumentFile(baseData, bot, chatId);
-  } catch {}
+    Promise.resolve(deps.createDocumentFile(baseData, bot, chatId)).catch((error) =>
+      logError("Ошибка создания или отправки файла документа", error),
+    );
+  } catch (error) {
+    logError("Ошибка запуска создания файла документа", error);
+  }
 
   removePayload(key);
 

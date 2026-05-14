@@ -8,6 +8,14 @@ let currentProvider = process.env.LLM_PROVIDER || "openrouter";
 
 // Константа для количества попыток при неудачном парсинге JSON
 const MAX_RETRY_ATTEMPTS = 2;
+const ENTITY_STOP_WORDS = new Set([
+  "клиника",
+  "ветклиника",
+  "лечебница",
+  "больница",
+  "ветеринарная",
+  "вет",
+]);
 
 const USER_MESSAGE_FIELDS = [
   "fio",
@@ -104,14 +112,21 @@ function extractJsonFromText(text) {
   return null;
 }
 
-const providers = {
-  openrouter: require("./openrouter"),
-  ollamacloud: require("./ollamaCloud"),
-  ollama: require("./ollama"),
+const providerLoaders = {
+  openrouter: () => require("./openrouter"),
+  ollamacloud: () => require("./ollamaCloud"),
+  ollama: () => require("./ollama"),
 };
+const loadedProviders = {};
 
 function getLlm() {
-  return providers[currentProvider] || providers.openrouter;
+  const providerName = PROVIDERS.includes(currentProvider)
+    ? currentProvider
+    : "openrouter";
+  if (!loadedProviders[providerName]) {
+    loadedProviders[providerName] = providerLoaders[providerName]();
+  }
+  return loadedProviders[providerName];
 }
 
 function getProvider() {
@@ -250,9 +265,7 @@ function mergeWithOverrideEmpty(mainObj, overrideObj) {
 async function findDocument(documents, fio, name, retryCount = 0) {
   const possibleName = `${name} - ${fio}`;
 
-  const possibleDocument = documents.find((o) =>
-    stringsMatch80Percent(possibleName, o.name, 95),
-  );
+  const possibleDocument = findBestDocumentMatch(documents, possibleName);
   if (possibleDocument) {
     return {
       exist: true,
@@ -310,6 +323,105 @@ function stringsMatch80Percent(str1, str2, persent = 80) {
   return similarity >= persent / 100;
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeEntityName(value) {
+  return normalizeText(value)
+    .split(" ")
+    .filter((word) => word && !ENTITY_STOP_WORDS.has(word))
+    .join(" ");
+}
+
+function compactNormalized(value) {
+  return normalizeText(value).replace(/\s+/g, "");
+}
+
+function similarityRatio(str1, str2) {
+  str1 = String(str1 || "").toLowerCase();
+  str2 = String(str2 || "").toLowerCase();
+  const maxLength = Math.max(str1.length, str2.length);
+  if (maxLength === 0) return 1;
+  const len1 = str1.length;
+  const len2 = str2.length;
+  const matrix = Array(len1 + 1)
+    .fill()
+    .map(() => Array(len2 + 1).fill(0));
+  for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+  for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+  for (let i = 1; i < len1 + 1; i++) {
+    for (let j = 1; j < len2 + 1; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j - 1] + 1,
+        );
+      }
+    }
+  }
+  return (maxLength - matrix[len1][len2]) / maxLength;
+}
+
+function findBestDocumentMatch(documents, possibleName) {
+  const normalizedPossibleName = compactNormalized(possibleName);
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const document of documents || []) {
+    const normalizedDocumentName = compactNormalized(document.name);
+    const score = similarityRatio(normalizedPossibleName, normalizedDocumentName);
+    if (score > bestScore) {
+      bestMatch = document;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.95 ? bestMatch : null;
+}
+
+function findBestEntityMatch(list, query) {
+  const normalizedQuery = normalizeEntityName(query);
+  const compactQuery = compactNormalized(normalizedQuery);
+  if (!compactQuery) return null;
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const item of list || []) {
+    if (!item.name) continue;
+    const normalizedName = normalizeEntityName(item.name);
+    const compactName = compactNormalized(normalizedName);
+    if (!compactName) continue;
+
+    if (compactName === compactQuery) {
+      return item;
+    }
+
+    const containsScore =
+      compactName.length >= 3 && compactQuery.includes(compactName)
+        ? 0.9
+        : 0;
+    const distanceScore = similarityRatio(compactQuery, compactName);
+    const score = Math.max(containsScore, distanceScore);
+
+    if (score > bestScore) {
+      bestMatch = item;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.88 ? bestMatch : null;
+}
+
 async function matchEntity(entityType, list, query, retryCount = 0) {
   // Проверяем кеш только для успешных запросов (retryCount = 0)
   if (retryCount === 0) {
@@ -319,10 +431,7 @@ async function matchEntity(entityType, list, query, retryCount = 0) {
     }
   }
 
-  const foundItem = list.find(
-    (item) =>
-      item.name && query && item.name.toLowerCase() === query.toLowerCase(),
-  );
+  let foundItem = findBestEntityMatch(list, query);
   if (foundItem) {
     const result = {
       name: foundItem.name,
@@ -350,7 +459,7 @@ async function matchEntity(entityType, list, query, retryCount = 0) {
 
       return fallbackResult;
     }
-    const foundItem = list.find(
+    foundItem = list.find(
       (item) =>
         item.name &&
         ollamaResponse.name &&
@@ -448,35 +557,46 @@ async function formatGoal(type) {
 }
 
 async function formatPet(animalType, coatColor, animalName) {
-  return askSimpleQuestion(
-    `Составь список из одного или нескольких животных в именительном падеже.
-Тип животного: ${animalType.toLowerCase()}
-Окрас: ${coatColor}
-Клички: ${animalName}
+  const type = String(animalType || "").trim().toLowerCase();
+  const color = String(coatColor || "").trim();
+  const names = Array.isArray(animalName)
+    ? animalName.filter(Boolean).join(", ")
+    : String(animalName || "").trim();
 
-Каждая запись должна содержать тип животного (строчными), окрас и кличку.
-Если кличек несколько — перечисли их через запятую после типа.
-Пример: если тип — «кошка», окрас — «трехцветная», клички — «Плюша, Марина», то вывод: кошка трехцветная Плюша, Марина.
-
-Выведи только результат, без дополнительного текста. `,
-  );
+  return [type, color, names].filter(Boolean).join(" ");
 }
 
 async function formatMonth(today) {
-  return askSimpleQuestion(
-    `Сегодня ${today}. Напиши одним словом в родительном падеже название текущего месяца на русском языке. Только одно слово, без кавычек и точек.`,
-  );
+  const months = [
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+  ];
+  const date = today instanceof Date ? today : new Date(today || Date.now());
+  return months[date.getMonth()];
 }
 
 async function formatShortFio(fio) {
-  return askSimpleQuestion(
-    `Преобразуй полное ФИО в формат "Фамилия И.О.". Верни только результат преобразования без дополнительных пояснений. 
-Примеры:
-1. Вход: "Иванов Петр Сергеевич" → Выход: "Иванов П.С."
-2. Вход: "Смирнова Анна Викторовна" → Выход: "Смирнова А.В."
-3. Вход: "Петров-Водкин Константин Дмитриевич" → Выход: "Петров-Водкин К.Д."
-Теперь преобразуй: ${fio}`,
-  );
+  const parts = String(fio || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length < 2) {
+    return parts.join(" ");
+  }
+
+  const [surname, ...names] = parts;
+  const initials = names.map((part) => `${part[0].toUpperCase()}.`).join("");
+  return `${surname} ${initials}`;
 }
 
 module.exports = {
