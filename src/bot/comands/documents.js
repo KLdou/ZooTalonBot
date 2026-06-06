@@ -1,6 +1,7 @@
 const {
   parseRussianMonth,
   getBelarusYearForMonth,
+  getRecentMonths,
   createDocumentsArchive,
 } = require("../../utils/documentArchive");
 const { logError } = require("../../utils/helpers");
@@ -13,14 +14,54 @@ function getMonthArgument(text) {
   return parts[1] || "";
 }
 
+async function sendArchive(bot, chatId, month, year, options = {}) {
+  const archive = createDocumentsArchive({
+    documentsDir: options.documentsDir,
+    month: month.index,
+    year,
+    preferMtimeForTests: options.preferMtimeForTests,
+  });
+
+  if (archive.count === 0) {
+    await bot.sendMessage(
+      chatId,
+      `Документы за ${month.nominative} ${year} не найдены.`,
+    );
+    return;
+  }
+
+  await bot.sendDocument(
+    chatId,
+    archive.buffer,
+    {
+      caption: `Документы за ${month.nominative} ${year}: ${archive.count}`,
+    },
+    {
+      filename: archive.fileName,
+      contentType: "application/zip",
+    },
+  );
+}
+
 async function handle(bot, msg, options = {}) {
   const chatId = msg.chat.id;
   const rawMonth = getMonthArgument(msg.text);
 
   if (!rawMonth) {
+    const recent = getRecentMonths(options.now || new Date());
+    const keyboard = recent.map((item) => [
+      {
+        text: `${item.nominative.charAt(0).toUpperCase() + item.nominative.slice(1)} ${item.year}`,
+        callback_data: JSON.stringify({ action: "send_docs", month: item.index, year: item.year }),
+      },
+    ]);
+
     await bot.sendMessage(
       chatId,
-      "Использование: /documents июнь\nКоманда принимает месяц на русском языке и отправляет ZIP с документами за ближайший прошедший или текущий такой месяц.",
+      "Выберите месяц для выгрузки документов:",
+      {
+        reply_markup: { inline_keyboard: keyboard },
+      },
     );
     return;
   }
@@ -37,32 +78,7 @@ async function handle(bot, msg, options = {}) {
   const year = getBelarusYearForMonth(month.index, options.now || new Date());
 
   try {
-    const archive = createDocumentsArchive({
-      documentsDir: options.documentsDir,
-      month: month.index,
-      year,
-      preferMtimeForTests: options.preferMtimeForTests,
-    });
-
-    if (archive.count === 0) {
-      await bot.sendMessage(
-        chatId,
-        `Документы за ${month.nominative} ${year} не найдены.`,
-      );
-      return;
-    }
-
-    await bot.sendDocument(
-      chatId,
-      archive.buffer,
-      {
-        caption: `Документы за ${month.nominative} ${year}: ${archive.count}`,
-      },
-      {
-        filename: archive.fileName,
-        contentType: "application/zip",
-      },
-    );
+    await sendArchive(bot, chatId, month, year, options);
   } catch (error) {
     logError("Ошибка при создании архива документов", error);
     await bot.sendMessage(
@@ -76,5 +92,6 @@ module.exports = {
   name,
   description,
   handle,
+  sendArchive,
   getMonthArgument,
 };

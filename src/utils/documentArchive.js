@@ -73,6 +73,30 @@ function getBelarusYearForMonth(requestedMonthIndex, now = new Date()) {
   return parts.year - 1;
 }
 
+function getRecentMonths(now = new Date()) {
+  const parts = getBelarusDateParts(now);
+  const result = [];
+
+  let currentMonth = parts.month;
+  let currentYear = parts.year;
+
+  for (let i = 0; i < 3; i++) {
+    const monthData = MONTHS.find((m) => m.index === currentMonth);
+    result.push({
+      index: currentMonth,
+      nominative: monthData.nominative,
+      year: currentYear,
+    });
+
+    currentMonth--;
+    if (currentMonth < 1) {
+      currentMonth = 12;
+      currentYear--;
+    }
+  }
+  return result;
+}
+
 function isGeneratedDocumentName(fileName) {
   return (
     path.extname(fileName).toLowerCase() === ".docx" &&
@@ -149,6 +173,7 @@ module.exports = {
   getBelarusDateParts,
   getCurrentBelarusYear,
   getBelarusYearForMonth,
+  getRecentMonths,
   isGeneratedDocumentName,
   getDocumentMadeAt,
   findDocumentsForMonth,

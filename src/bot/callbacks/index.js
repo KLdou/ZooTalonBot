@@ -8,12 +8,14 @@ const handleEditField = require("./editField");
 const handleSetProvider = require("./setProvider");
 const handleDocument = require("./document");
 const handleTalon = require("./talon");
+const handleSendDocs = require("./sendDocs");
 const { createDocumentFile } = require("../messages/document");
 const { createTalonFlow } = require("../messages/talon");
 
 const actionHandlers = {
   edit_field: handleEditField,
   set_provider: handleSetProvider,
+  send_docs: handleSendDocs,
 };
 
 const payloadTypeHandlers = {

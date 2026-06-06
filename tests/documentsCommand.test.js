@@ -165,15 +165,30 @@ function createFakeBot() {
   };
 }
 
-async function testDocumentsCommandRejectsMissingMonth() {
+async function testDocumentsCommandShowsButtonsWhenNoMonth() {
   const command = requireFresh("../src/bot/comands/documents");
   const bot = createFakeBot();
 
-  await command.handle(bot, { chat: { id: 123 }, text: "/documents" });
+  await command.handle(
+    bot,
+    { chat: { id: 123 }, text: "/documents" },
+    { now: new Date("2026-06-06T09:00:00Z") }
+  );
 
   assert.strictEqual(bot.documents.length, 0);
   assert.strictEqual(bot.messages.length, 1);
-  assert.match(bot.messages[0].text, /Использование: \/documents июнь/);
+  assert.strictEqual(bot.messages[0].chatId, 123);
+  assert.strictEqual(bot.messages[0].text, "Выберите месяц для выгрузки документов:");
+
+  const keyboard = bot.messages[0].options.reply_markup.inline_keyboard;
+  assert.strictEqual(keyboard.length, 3);
+  assert.strictEqual(keyboard[0][0].text, "Июнь 2026");
+  assert.strictEqual(JSON.parse(keyboard[0][0].callback_data).action, "send_docs");
+  assert.strictEqual(JSON.parse(keyboard[0][0].callback_data).month, 6);
+  assert.strictEqual(JSON.parse(keyboard[0][0].callback_data).year, 2026);
+
+  assert.strictEqual(keyboard[1][0].text, "Май 2026");
+  assert.strictEqual(keyboard[2][0].text, "Апрель 2026");
 }
 
 async function testDocumentsCommandRejectsInvalidMonth() {
@@ -259,17 +274,73 @@ async function testBelarusYearForMonth() {
   assert.strictEqual(archive.getBelarusYearForMonth(1, janNow), 2026);
 }
 
+async function testRecentMonths() {
+  const archive = requireFresh("../src/utils/documentArchive");
+
+  // In June 2026
+  const juneNow = new Date("2026-06-06T09:00:00Z");
+  assert.deepStrictEqual(archive.getRecentMonths(juneNow), [
+    { index: 6, nominative: "июнь", year: 2026 },
+    { index: 5, nominative: "май", year: 2026 },
+    { index: 4, nominative: "апрель", year: 2026 },
+  ]);
+
+  // In January 2026
+  const janNow = new Date("2026-01-01T09:00:00Z");
+  assert.deepStrictEqual(archive.getRecentMonths(janNow), [
+    { index: 1, nominative: "январь", year: 2026 },
+    { index: 12, nominative: "декабрь", year: 2025 },
+    { index: 11, nominative: "ноябрь", year: 2025 },
+  ]);
+}
+
+async function testSendDocsCallbackQuery() {
+  const { handleCallbackAction } = requireFresh("../src/bot/callbacks/index");
+  const bot = createFakeBot();
+  const dir = makeTempDir();
+
+  try {
+    const filePath = path.join(dir, "Луна - Иванова Анна.docx");
+    const madeAt = new Date("2026-06-15T10:00:00.000Z");
+    fs.writeFileSync(filePath, Buffer.from("doc"));
+    fs.utimesSync(filePath, madeAt, madeAt);
+
+    const key = { action: "send_docs", month: 6, year: 2026 };
+    const handled = await handleCallbackAction(
+      bot,
+      123,
+      key,
+      {
+        documentsDir: dir,
+        preferMtimeForTests: true,
+      }
+    );
+
+    assert.strictEqual(handled, true);
+    assert.strictEqual(bot.messages.length, 0);
+    assert.strictEqual(bot.documents.length, 1);
+    assert.strictEqual(bot.documents[0].chatId, 123);
+    assert.ok(Buffer.isBuffer(bot.documents[0].document));
+    assert.match(bot.documents[0].options.caption, /Документы за июнь 2026: 1/);
+    assert.strictEqual(bot.documents[0].fileOptions.filename, "documents-2026-06.zip");
+  } finally {
+    removeTempDir(dir);
+  }
+}
+
 async function run() {
   await testRussianMonthParsing();
   await testBelarusDateParts();
   await testBelarusYearForMonth();
+  await testRecentMonths();
   await testGeneratedDocumentNameFilter();
   await testFindDocumentsForMonthUsesBelarusCalendar();
   await testCreateDocumentsArchive();
-  await testDocumentsCommandRejectsMissingMonth();
+  await testDocumentsCommandShowsButtonsWhenNoMonth();
   await testDocumentsCommandRejectsInvalidMonth();
   await testDocumentsCommandSendsArchive();
   await testDocumentsCommandReportsEmptyMonth();
+  await testSendDocsCallbackQuery();
 }
 
 run().catch((error) => {
