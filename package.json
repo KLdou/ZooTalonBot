@@ -4,7 +4,7 @@
   "main": "src/bot/index.js",
   "scripts": {
     "start": "node src/bot/index.js",
-    "test": "node tests/optimization.test.js"
+    "test": "node tests/optimization.test.js && node tests/documentsCommand.test.js"
   },
   "keywords": [],
   "author": "",

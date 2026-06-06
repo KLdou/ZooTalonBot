@@ -1,6 +1,7 @@
 const providerCommand = require("./provider");
+const documentsCommand = require("./documents");
 
-const commands = [providerCommand];
+const commands = [providerCommand, documentsCommand];
 
 function getCommandName(text) {
   if (!text || typeof text !== "string") {
