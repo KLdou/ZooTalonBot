@@ -6,6 +6,7 @@ const {
 const { logError } = require("../../utils/helpers");
 
 const name = "/documents";
+const description = "Получить ZIP-архив документов за указанный месяц (использование: /documents месяц)";
 
 function getMonthArgument(text) {
   const parts = String(text || "").trim().split(/\s+/);
@@ -73,6 +74,7 @@ async function handle(bot, msg, options = {}) {
 
 module.exports = {
   name,
+  description,
   handle,
   getMonthArgument,
 };

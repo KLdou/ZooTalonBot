@@ -1,6 +1,7 @@
 const { getProvider, PROVIDERS } = require("../../services/llmService");
 
 const name = "/provider";
+const description = "Выбрать LLM-провайдер для генерации документов";
 
 async function handle(bot, msg) {
   const chatId = msg.chat.id;
@@ -24,5 +25,6 @@ async function handle(bot, msg) {
 
 module.exports = {
   name,
+  description,
   handle,
 };

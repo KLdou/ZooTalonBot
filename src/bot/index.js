@@ -2,6 +2,7 @@ require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const { log, logError } = require("../utils/helpers");
 const { handleMessage, handleCallback } = require("./handlers");
+const { registerBotCommands } = require("./comands");
 let bot;
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 function createBot() {
@@ -23,6 +24,9 @@ function createBot() {
       agent: null
     }
   });
+
+  // Регистрация команд в Telegram
+  registerBotCommands(bot);
 
   // Обработчики событий
   bot.on("message", (msg) => handleMessage(bot, msg));

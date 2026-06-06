@@ -1,7 +1,8 @@
 const providerCommand = require("./provider");
 const documentsCommand = require("./documents");
+const helpCommand = require("./help");
 
-const commands = [providerCommand, documentsCommand];
+const commands = [providerCommand, documentsCommand, helpCommand];
 
 function getCommandName(text) {
   if (!text || typeof text !== "string") {
@@ -28,6 +29,23 @@ async function handleCommand(bot, msg) {
   return true;
 }
 
+async function registerBotCommands(bot) {
+  try {
+    const { log } = require("../../utils/helpers");
+    const botCommands = commands.map((cmd) => ({
+      command: cmd.name.replace(/^\//, ""),
+      description: cmd.description || "Без описания",
+    }));
+    await bot.setMyCommands(botCommands);
+    log("✅ Команды бота успешно зарегистрированы в Telegram API");
+  } catch (error) {
+    const { logError } = require("../../utils/helpers");
+    logError("Ошибка при регистрации команд в Telegram API", error);
+  }
+}
+
 module.exports = {
   handleCommand,
+  registerBotCommands,
+  commands,
 };
