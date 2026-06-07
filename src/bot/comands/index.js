@@ -1,8 +1,9 @@
 const providerCommand = require("./provider");
 const documentsCommand = require("./documents");
 const helpCommand = require("./help");
+const giveawayCommand = require("./giveaway");
 
-const commands = [providerCommand, documentsCommand, helpCommand];
+const commands = [providerCommand, documentsCommand, helpCommand, giveawayCommand];
 
 function getCommandName(text) {
   if (!text || typeof text !== "string") {

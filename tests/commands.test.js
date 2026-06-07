@@ -42,6 +42,11 @@ async function testCommandsListAndDescriptions() {
   assert.ok(helpCmd);
   assert.strictEqual(typeof helpCmd.description, "string");
   assert.ok(helpCmd.description.length > 0);
+
+  const giveawayCmd = commands.find(c => c.name === "/giveaway");
+  assert.ok(giveawayCmd);
+  assert.strictEqual(typeof giveawayCmd.description, "string");
+  assert.ok(giveawayCmd.description.length > 0);
 }
 
 async function testHelpCommandOutput() {
@@ -55,6 +60,7 @@ async function testHelpCommandOutput() {
   assert.ok(bot.messages[0].text.includes("/help"));
   assert.ok(bot.messages[0].text.includes("/provider"));
   assert.ok(bot.messages[0].text.includes("/documents"));
+  assert.ok(bot.messages[0].text.includes("/giveaway"));
   assert.strictEqual(bot.messages[0].options.parse_mode, "Markdown");
 }
 
@@ -65,7 +71,7 @@ async function testRegisterBotCommands() {
   await registerBotCommands(bot);
 
   assert.ok(bot.commandsRegistered);
-  assert.strictEqual(bot.commandsRegistered.length, 3);
+  assert.strictEqual(bot.commandsRegistered.length, 4);
   
   const providerReg = bot.commandsRegistered.find(c => c.command === "provider");
   assert.ok(providerReg);
@@ -74,6 +80,10 @@ async function testRegisterBotCommands() {
   const helpReg = bot.commandsRegistered.find(c => c.command === "help");
   assert.ok(helpReg);
   assert.strictEqual(helpReg.description, "Показать список доступных команд и их описание");
+
+  const giveawayReg = bot.commandsRegistered.find(c => c.command === "giveaway");
+  assert.ok(giveawayReg);
+  assert.strictEqual(giveawayReg.description, "Собрать уникальные комментарии к посту в Instagram (использование: /giveaway ссылка)");
 }
 
 async function testHandleCommand() {
