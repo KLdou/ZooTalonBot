@@ -4,7 +4,7 @@
   "main": "src/bot/index.js",
   "scripts": {
     "start": "node src/bot/index.js",
-    "test": "node tests/optimization.test.js && node tests/documentsCommand.test.js && node tests/commands.test.js && node tests/giveaway.test.js"
+    "test": "node tests/optimization.test.js && node tests/documentsCommand.test.js && node tests/commands.test.js && node tests/giveaway.test.js && node tests/giveaway_xlsx.test.js"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +18,7 @@
     "ollama": "^0.5.14",
     "openai": "^5.20.0",
     "pizzip": "^3.1.8",
-    "playwright": "^1.60.0"
+    "playwright": "^1.60.0",
+    "xlsx": "^0.18.5"
   }
 }

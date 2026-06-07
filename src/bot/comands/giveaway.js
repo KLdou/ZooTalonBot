@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const XLSX = require("xlsx");
 const { logError } = require("../../utils/helpers");
 
 const name = "/giveaway";
@@ -346,15 +347,6 @@ function levenshtein(first, second, maxDistance) {
   return previous[a.length];
 }
 
-function toCsv(rows) {
-  return `${rows.map((row) => row.map(csvCell).join(";")).join("\n")}\n`;
-}
-
-function csvCell(value) {
-  const normalized = String(value ?? "").replace(/\r?\n|\r/g, " ").replace(/\s+/g, " ").trim();
-  return `"${normalized.replace(/"/g, '""')}"`;
-}
-
 function formatDateMinsk(isoDate) {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) {
@@ -380,7 +372,7 @@ async function handle(bot, msg) {
   if (!rawUrl) {
     await bot.sendMessage(
       chatId,
-      "Использование: /giveaway <ссылка на пост Instagram>\nКоманда собирает комментарии к посту, удаляет дубликаты и возвращает списки уникальных комментариев."
+      "Использование: /giveaway <ссылка на пост Instagram>\nКоманда собирает комментарии к посту, удаляет дубликаты и возвращает XLSX-файл с результатами."
     );
     return;
   }
@@ -437,8 +429,7 @@ async function handle(bot, msg) {
     markSimilarComments(unique);
 
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "instagram-giveaway-"));
-    const uniquePath = path.join(tempDir, "unique_comments.csv");
-    const duplicatesPath = path.join(tempDir, "duplicate_comments.csv");
+    const xlsxPath = path.join(tempDir, "giveaway_results.xlsx");
 
     const commentsRows = [
       ["дата", "пользователь", "комментарий", "проверка"],
@@ -459,8 +450,14 @@ async function handle(bot, msg) {
       ]),
     ];
 
-    fs.writeFileSync(uniquePath, `\uFEFF${toCsv(commentsRows)}`, "utf8");
-    fs.writeFileSync(duplicatesPath, `\uFEFF${toCsv(duplicatesRows)}`, "utf8");
+    const wb = XLSX.utils.book_new();
+    const wsUnique = XLSX.utils.aoa_to_sheet(commentsRows);
+    XLSX.utils.book_append_sheet(wb, wsUnique, "Уникальные");
+
+    const wsDuplicates = XLSX.utils.aoa_to_sheet(duplicatesRows);
+    XLSX.utils.book_append_sheet(wb, wsDuplicates, "Дубликаты");
+
+    XLSX.writeFile(wb, xlsxPath);
 
     await bot.editMessageText(
       `📊 Результаты сбора комментариев:\n` +
@@ -473,19 +470,10 @@ async function handle(bot, msg) {
 
     await bot.sendDocument(
       chatId,
-      uniquePath,
-      { caption: `Уникальные комментарии (${unique.length})` },
-      { filename: "unique_comments.csv", contentType: "text/csv" }
+      xlsxPath,
+      { caption: `Результаты розыгрыша (Уникальных: ${unique.length}, Дубликатов: ${duplicates.length})` },
+      { filename: "giveaway_results.xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
     );
-
-    if (duplicates.length > 0) {
-      await bot.sendDocument(
-        chatId,
-        duplicatesPath,
-        { caption: `Дубликаты (${duplicates.length})` },
-        { filename: "duplicate_comments.csv", contentType: "text/csv" }
-      );
-    }
   } catch (error) {
     logError("Ошибка при выполнении giveaway", error);
     try {
