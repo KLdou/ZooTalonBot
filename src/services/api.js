@@ -126,6 +126,108 @@ async function createCoupon(payload, token) {
   return { name: res.data.name, couponId: res.data._id };
 }
 
+// TTL кеша для списка талонов - 10 минут
+const COUPONS_CACHE_TTL = 10 * 60 * 1000;
+let couponsCache = new Map();
+
+/**
+ * Очистка кеша талонов
+ */
+function clearCouponsCache() {
+  couponsCache.clear();
+  log("Coupons cache cleared");
+}
+
+/**
+ * Получение списка талонов с пагинацией и кешированием на 10 минут
+ * @param {string} token - Токен авторизации
+ * @param {Object} [options] - Параметры фильтрации (year, month, limit)
+ * @returns {Promise<Array>} - Массив полученных талонов
+ */
+async function getCoupons(token, options = {}) {
+  const limit = options.limit || 100;
+  const targetYear = options.year;
+  const targetMonth = options.month;
+
+  const cacheKey = `${targetYear ?? "all"}_${targetMonth ?? "all"}`;
+  const now = Date.now();
+  const cached = couponsCache.get(cacheKey);
+
+  if (cached && (now - cached.timestamp) < COUPONS_CACHE_TTL) {
+    log(`Cache HIT for coupons (${cacheKey})`);
+    return cached.data;
+  }
+
+  log(`Cache MISS for coupons (${cacheKey}) - fetching fresh data`);
+
+  let offset = 0;
+  let allCoupons = [];
+  let stopFetching = false;
+
+  while (!stopFetching) {
+    const res = await axios.get(`${API_BASE}/coupon-secured/v1/coupon`, {
+      params: { offset, limit },
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const items = res.data?.items || [];
+    const count = res.data?.count || 0;
+
+    if (items.length === 0) {
+      break;
+    }
+
+    let itemsOlderThanPeriod = 0;
+
+    for (const item of items) {
+      const rawDateStr = item.effectiveDate || item.bookedAt;
+      const d = rawDateStr ? new Date(rawDateStr) : null;
+      const itemYear = item.year || (d ? d.getFullYear() : null);
+      const itemMonth = d ? d.getMonth() + 1 : null;
+
+      let matchesYear = true;
+      if (targetYear !== undefined && targetYear !== null) {
+        matchesYear = itemYear === targetYear;
+      }
+
+      let matchesMonth = true;
+      if (targetMonth !== undefined && targetMonth !== null) {
+        matchesMonth = itemMonth === targetMonth;
+      }
+
+      if (matchesYear && matchesMonth) {
+        allCoupons.push(item);
+      }
+
+      if (targetYear !== undefined && targetYear !== null) {
+        if (itemYear !== null && itemYear < targetYear) {
+          itemsOlderThanPeriod++;
+        } else if (itemYear === targetYear && targetMonth !== undefined && targetMonth !== null) {
+          if (itemMonth !== null && itemMonth < targetMonth) {
+            itemsOlderThanPeriod++;
+          }
+        }
+      }
+    }
+
+    if (items.length > 0 && itemsOlderThanPeriod === items.length) {
+      stopFetching = true;
+    }
+
+    offset += limit;
+    if (offset >= count) {
+      break;
+    }
+  }
+
+  couponsCache.set(cacheKey, {
+    data: allCoupons,
+    timestamp: now,
+  });
+
+  return allCoupons;
+}
+
 async function createDocument(payload, token) {
   const res = await axios.put(
     `${API_BASE}/document-secured/v1/document`,
@@ -145,5 +247,7 @@ module.exports = {
   getCouponRefListsCached,
   clearRefListCache,
   createCoupon,
+  getCoupons,
+  clearCouponsCache,
   createDocument,
 };

@@ -71,7 +71,7 @@ async function testRegisterBotCommands() {
   await registerBotCommands(bot);
 
   assert.ok(bot.commandsRegistered);
-  assert.strictEqual(bot.commandsRegistered.length, 4);
+  assert.strictEqual(bot.commandsRegistered.length, 5);
   
   const providerReg = bot.commandsRegistered.find(c => c.command === "provider");
   assert.ok(providerReg);
@@ -84,6 +84,10 @@ async function testRegisterBotCommands() {
   const giveawayReg = bot.commandsRegistered.find(c => c.command === "giveaway");
   assert.ok(giveawayReg);
   assert.strictEqual(giveawayReg.description, "Собрать уникальные комментарии к посту в Instagram (использование: /giveaway ссылка)");
+
+  const getTalonStatReg = bot.commandsRegistered.find(c => c.command === "gettalonstat");
+  assert.ok(getTalonStatReg);
+  assert.strictEqual(getTalonStatReg.description, "Сформировать статистику по талонам в Excel (использование: /gettalonstat [год] [месяц])");
 }
 
 async function testHandleCommand() {

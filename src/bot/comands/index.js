@@ -2,8 +2,9 @@ const providerCommand = require("./provider");
 const documentsCommand = require("./documents");
 const helpCommand = require("./help");
 const giveawayCommand = require("./giveaway");
+const getTalonStatCommand = require("./getTalonStat");
 
-const commands = [providerCommand, documentsCommand, helpCommand, giveawayCommand];
+const commands = [providerCommand, documentsCommand, helpCommand, giveawayCommand, getTalonStatCommand];
 
 function getCommandName(text) {
   if (!text || typeof text !== "string") {
@@ -20,7 +21,12 @@ async function handleCommand(bot, msg) {
     return false;
   }
 
-  const command = commands.find((item) => item.name === commandName);
+  const lowerCmd = commandName.toLowerCase();
+  const command = commands.find(
+    (item) =>
+      item.name.toLowerCase() === lowerCmd ||
+      (Array.isArray(item.aliases) && item.aliases.some((alias) => alias.toLowerCase() === lowerCmd))
+  );
 
   if (!command) {
     return false;
