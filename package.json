@@ -4,7 +4,7 @@
   "main": "src/bot/index.js",
   "scripts": {
     "start": "node src/bot/index.js",
-    "test": "node tests/optimization.test.js && node tests/documentsCommand.test.js && node tests/commands.test.js && node tests/giveaway.test.js && node tests/giveaway_xlsx.test.js && node tests/getTalonStat.test.js"
+    "test": "node tests/inviteService.test.js && node tests/talonWizard.test.js && node tests/optimization.test.js && node tests/documentsCommand.test.js && node tests/commands.test.js && node tests/giveaway.test.js && node tests/giveaway_xlsx.test.js && node tests/getTalonStat.test.js && node tests/geminiProvider.test.js && node tests/callbackSecurity.test.js && node tests/securityFixes.test.js"
   },
   "keywords": [],
   "author": "",

@@ -98,22 +98,28 @@ async function createDocumentFile(baseData, bot, chatId) {
     year: today.toLocaleDateString("en-US", { year: "numeric" }),
   };
 
-  const inputFilename = path.join(
+  const documentsDir = path.resolve(
     __dirname,
     "..",
     "..",
     "..",
     "documents",
-    "example.docx",
   );
-  const outputFilename = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "documents",
-    `${baseData.animal_name} - ${docxPayload.fio}.docx`,
-  );
+  const inputFilename = path.join(documentsDir, "example.docx");
+
+  // Очистка имени файла от path traversal, слэшей и запрещенных символов
+  const rawAnimal = String(baseData.animal_name || "Животное").trim();
+  const rawFio = String(docxPayload.fio || "Заявитель").trim();
+  const safeAnimal = rawAnimal.replace(/[/\\?%*:|"<>.]+/g, "_").trim() || "Животное";
+  const safeFio = rawFio.replace(/[/\\?%*:|"<>.]+/g, "_").trim() || "Заявитель";
+  const docFilename = `${safeAnimal} - ${safeFio}.docx`;
+
+  const outputFilename = path.join(documentsDir, docFilename);
+
+  // Защита от выхода за пределы директории documents
+  if (!path.resolve(outputFilename).startsWith(documentsDir)) {
+    throw new Error("Invalid output file path (path traversal detected)");
+  }
 
   const newFile = await openAndReplacePlaceholders(
     inputFilename,
@@ -127,7 +133,7 @@ async function createDocumentFile(baseData, bot, chatId) {
         newFile,
         {},
         {
-          filename: `${baseData.animal_name} - ${docxPayload.fio}.docx`,
+          filename: docFilename,
           contentType:
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         },

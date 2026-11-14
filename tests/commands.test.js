@@ -12,13 +12,15 @@ function requireFresh(modulePath) {
 function createFakeBot() {
   return {
     messages: [],
+    commandCalls: [],
     commandsRegistered: null,
     async sendMessage(chatId, text, options) {
       this.messages.push({ chatId, text, options });
     },
-    async setMyCommands(commands) {
+    async setMyCommands(commands, options) {
+      this.commandCalls.push({ commands, options });
       this.commandsRegistered = commands;
-    }
+    },
   };
 }
 
@@ -70,24 +72,21 @@ async function testRegisterBotCommands() {
 
   await registerBotCommands(bot);
 
-  assert.ok(bot.commandsRegistered);
-  assert.strictEqual(bot.commandsRegistered.length, 5);
+  assert.ok(bot.commandCalls.length >= 2, "Должно быть минимум 2 вызова setMyCommands (default + админы)");
   
-  const providerReg = bot.commandsRegistered.find(c => c.command === "provider");
-  assert.ok(providerReg);
-  assert.strictEqual(providerReg.description, "Выбрать LLM-провайдер для генерации документов");
+  // Проверка что для default scope список пустой (обычные юзеры не видят админских команд)
+  const defaultCall = bot.commandCalls.find(
+    (c) => c.options && (c.options.scope === '{"type":"default"}' || c.options.scope?.type === "default"),
+  );
+  assert.ok(defaultCall, "Должен быть вызов для scope default");
+  assert.strictEqual(defaultCall.commands.length, 0, "Для обычных пользователей меню команд должно быть пустым");
 
-  const helpReg = bot.commandsRegistered.find(c => c.command === "help");
-  assert.ok(helpReg);
-  assert.strictEqual(helpReg.description, "Показать список доступных команд и их описание");
-
-  const giveawayReg = bot.commandsRegistered.find(c => c.command === "giveaway");
-  assert.ok(giveawayReg);
-  assert.strictEqual(giveawayReg.description, "Собрать уникальные комментарии к посту в Instagram (использование: /giveaway ссылка)");
-
-  const getTalonStatReg = bot.commandsRegistered.find(c => c.command === "gettalonstat");
-  assert.ok(getTalonStatReg);
-  assert.strictEqual(getTalonStatReg.description, "Сформировать статистику по талонам в Excel (использование: /gettalonstat [год] [месяц])");
+  // Проверка что для админов зарегистрированы все 7 команд
+  const adminCall = bot.commandCalls.find(
+    (c) => c.options && (typeof c.options.scope === "string" && c.options.scope.includes("chat")),
+  );
+  assert.ok(adminCall, "Должен быть вызов для scope chat (администратора)");
+  assert.strictEqual(adminCall.commands.length, 7, "Для администратора должны быть зарегистрированы все 7 команд");
 }
 
 async function testHandleCommand() {

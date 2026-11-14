@@ -9,13 +9,20 @@ const handleSetProvider = require("./setProvider");
 const handleDocument = require("./document");
 const handleTalon = require("./talon");
 const handleSendDocs = require("./sendDocs");
+const { handleApproveWizard, handleRejectWizard } = require("./wizardReview");
+const handleRevokeInvite = require("./revokeInvite");
+const { handleWizardCallback } = require("../wizard/talonWizard");
 const { createDocumentFile } = require("../messages/document");
 const { createTalonFlow } = require("../messages/talon");
+const { processNames } = require("../messages/index");
 
 const actionHandlers = {
   edit_field: handleEditField,
   set_provider: handleSetProvider,
   send_docs: handleSendDocs,
+  approve_wiz: handleApproveWizard,
+  reject_wiz: handleRejectWizard,
+  revoke_inv: handleRevokeInvite,
 };
 
 const payloadTypeHandlers = {
@@ -27,6 +34,7 @@ async function handleCallbackAction(bot, chatId, key, deps = {}) {
   const callbackDeps = {
     createDocumentFile,
     createTalonFlow,
+    processNames,
     ...deps,
   };
 
@@ -36,6 +44,10 @@ async function handleCallbackAction(bot, chatId, key, deps = {}) {
   }
 
   if (typeof key === "object" && key.action) {
+    if (key.action.startsWith("wiz_")) {
+      return await handleWizardCallback(bot, chatId, key);
+    }
+
     const actionHandler = actionHandlers[key.action];
     if (!actionHandler) {
       return false;

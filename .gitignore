@@ -1,5 +1,6 @@
 .env
 documents/
+data/
 node_modules/
 # Логи
 logs

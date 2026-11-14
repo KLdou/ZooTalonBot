@@ -51,12 +51,18 @@ function confirmationKeyboard(key) {
 const payloadStore = new Map();
 const editSessionStore = new Map();
 
-function storePayload(chatId, payload) {
-  const key = `${chatId}_${Date.now()}_${crypto
-    .randomBytes(4)
-    .toString("hex")}`;
+function storePayload(keyOrChatId, payload) {
+  const key =
+    typeof keyOrChatId === "string" && keyOrChatId.startsWith("wiz_")
+      ? keyOrChatId
+      : `${keyOrChatId}_${Date.now()}_${crypto
+          .randomBytes(4)
+          .toString("hex")}`;
   payloadStore.set(key, payload);
-  setTimeout(() => payloadStore.delete(key), 60 * 60 * 1000);
+  const timer = setTimeout(() => payloadStore.delete(key), 60 * 60 * 1000);
+  if (timer && typeof timer.unref === "function") {
+    timer.unref();
+  }
   return key;
 }
 
@@ -124,7 +130,10 @@ function storeEditSession(chatId, baseData, errors, refLists) {
   });
   
   // Автоматическое удаление через 30 минут
-  setTimeout(() => editSessionStore.delete(sessionKey), 30 * 60 * 1000);
+  const timer = setTimeout(() => editSessionStore.delete(sessionKey), 30 * 60 * 1000);
+  if (timer && typeof timer.unref === "function") {
+    timer.unref();
+  }
   
   return sessionKey;
 }
@@ -171,6 +180,17 @@ function removeEditSession(sessionKey) {
   return editSessionStore.delete(sessionKey);
 }
 
+const DEFAULT_ALLOWED_USERS = [653859626, 485720926];
+
+function getAllowedUsers() {
+  if (process.env.ALLOWED_USERS) {
+    return process.env.ALLOWED_USERS.split(",")
+      .map((id) => parseInt(id.trim(), 10))
+      .filter((id) => !isNaN(id));
+  }
+  return DEFAULT_ALLOWED_USERS;
+}
+
 module.exports = {
   log,
   logError,
@@ -186,4 +206,5 @@ module.exports = {
   getActiveEditSession,
   updateEditSession,
   removeEditSession,
+  getAllowedUsers,
 };
