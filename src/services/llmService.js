@@ -3,7 +3,7 @@
 
 const { log, logError } = require("../utils/helpers");
 
-const PROVIDERS = ["ollama", "openrouter", "ollamacloud"];
+const PROVIDERS = ["ollama", "openrouter", "ollamacloud", "gemini"];
 let currentProvider = process.env.LLM_PROVIDER || "openrouter";
 
 // Константа для количества попыток при неудачном парсинге JSON
@@ -116,6 +116,7 @@ const providerLoaders = {
   openrouter: () => require("./openrouter"),
   ollamacloud: () => require("./ollamaCloud"),
   ollama: () => require("./ollama"),
+  gemini: () => require("./gemini"),
 };
 const loadedProviders = {};
 
