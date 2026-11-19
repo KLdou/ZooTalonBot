@@ -3,15 +3,40 @@ const { OpenAI } = require("openai");
 
 let cachedClient = null;
 let lastApiKey = null;
+let lastProxy = null;
 
 function getClient() {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!cachedClient || lastApiKey !== apiKey) {
-    cachedClient = new OpenAI({
+  const proxy = process.env.GEMINI_PROXY || process.env.HTTPS_PROXY;
+  if (!cachedClient || lastApiKey !== apiKey || lastProxy !== proxy) {
+    const options = {
       baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
       apiKey: apiKey,
-    });
+    };
+
+    if (proxy) {
+      try {
+        const { ProxyAgent, Socks5ProxyAgent } = require("undici");
+        if (proxy.startsWith("socks5://") || proxy.startsWith("socks5h://")) {
+          options.fetchOptions = {
+            dispatcher: new Socks5ProxyAgent(
+              proxy.replace("socks5h://", "socks5://"),
+            ),
+          };
+        } else {
+          options.fetchOptions = {
+            dispatcher: new ProxyAgent(proxy),
+          };
+        }
+        log(`Gemini: using proxy ${proxy}`);
+      } catch (err) {
+        logError("Gemini: failed to initialize proxy agent:", err);
+      }
+    }
+
+    cachedClient = new OpenAI(options);
     lastApiKey = apiKey;
+    lastProxy = proxy;
   }
   return cachedClient;
 }

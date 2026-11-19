@@ -229,6 +229,52 @@ async function testLlmServiceIntegrationWithGemini() {
   }
 }
 
+async function testGeminiServiceProxyConfig() {
+  process.env.GEMINI_API_KEY = "test-api-key";
+  process.env.GEMINI_MODEL = "gemini-3.5-flash-lite";
+  process.env.GEMINI_PROXY = "socks5://127.0.0.1:40000";
+
+  let createdClientOptions = null;
+  const openaiPath = require.resolve("openai");
+  const originalOpenAI = require.cache[openaiPath];
+
+  require.cache[openaiPath] = {
+    exports: {
+      OpenAI: class MockOpenAI {
+        constructor(options) {
+          createdClientOptions = options;
+          this.chat = {
+            completions: {
+              create: async () => ({
+                choices: [{ message: { content: "Proxy response" } }],
+              }),
+            },
+          };
+        }
+      },
+    },
+  };
+
+  try {
+    const gemini = requireFresh("../src/services/gemini");
+    const result = await gemini.sendPrompt("Proxy test");
+
+    assert.strictEqual(result, "Proxy response");
+    assert.ok(createdClientOptions.fetchOptions, "Should have fetchOptions");
+    assert.ok(
+      createdClientOptions.fetchOptions.dispatcher,
+      "Should configure undici dispatcher for proxy",
+    );
+  } finally {
+    delete process.env.GEMINI_PROXY;
+    if (originalOpenAI) {
+      require.cache[openaiPath] = originalOpenAI;
+    } else {
+      delete require.cache[openaiPath];
+    }
+  }
+}
+
 async function runTests() {
   console.log("Running Gemini provider tests...");
   await testProviderRegistration();
@@ -236,6 +282,7 @@ async function runTests() {
   await testGeminiServiceSendPromptSuccess();
   await testGeminiServiceFallback();
   await testGeminiServiceAllModelsFail();
+  await testGeminiServiceProxyConfig();
   await testLlmServiceIntegrationWithGemini();
   console.log("✅ All Gemini provider tests passed!");
 }
