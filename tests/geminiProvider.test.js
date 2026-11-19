@@ -260,6 +260,11 @@ async function testGeminiServiceProxyConfig() {
     const result = await gemini.sendPrompt("Proxy test");
 
     assert.strictEqual(result, "Proxy response");
+    assert.strictEqual(
+      typeof createdClientOptions.fetch,
+      "function",
+      "Should pass undici fetch",
+    );
     assert.ok(createdClientOptions.fetchOptions, "Should have fetchOptions");
     assert.ok(
       createdClientOptions.fetchOptions.dispatcher,

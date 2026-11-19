@@ -16,7 +16,8 @@ function getClient() {
 
     if (proxy) {
       try {
-        const { ProxyAgent, Socks5ProxyAgent } = require("undici");
+        const { fetch: undiciFetch, ProxyAgent, Socks5ProxyAgent } = require("undici");
+        options.fetch = undiciFetch;
         if (proxy.startsWith("socks5://") || proxy.startsWith("socks5h://")) {
           options.fetchOptions = {
             dispatcher: new Socks5ProxyAgent(
@@ -114,7 +115,8 @@ async function sendPrompt(prompt, models = null) {
 
       return response.choices[0].message.content;
     } catch (error) {
-      logError(`Gemini error with model ${model}:`, error);
+      const cause = error.cause ? ` (Cause: ${error.cause.message || JSON.stringify(error.cause)})` : "";
+      logError(`Gemini error with model ${model}${cause}:`, error);
 
       if (i === models.length - 1) {
         logError(`Gemini: All models failed. Last error:`, error);
